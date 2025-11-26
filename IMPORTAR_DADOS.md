@@ -1,66 +1,56 @@
 # Como Importar Dados para o Railway
 
-## Passo 1: Exportar Dados Locais (JÁ FEITO!)
+## ✅ Importação Automática (Configurado!)
 
-✅ Você já tem o arquivo `backup_dados.json` com todos os dados exportados:
-- 7 caixinhas
-- 18 transações
-- 16 estabelecimentos
-- 1 configuração
+O bot agora importa os dados **automaticamente** no primeiro boot!
 
-## Passo 2: Enviar backup_dados.json para o Railway
+## Como funciona:
 
-### Opção A: Via GitHub (Recomendado)
+1. **Você faz:** Commit e push do `backup_dados.json` para o GitHub
+2. **Railway faz:** Deploy automático
+3. **Bot faz:** Detecta o arquivo e importa tudo sozinho!
+4. **Bot faz:** Renomeia para `backup_dados.json.imported` (não importa 2x)
 
-1. Adicione o backup ao repositório:
+## Passo a Passo:
+
+### 1. Adicione o backup ao repositório:
+
 ```bash
 git add backup_dados.json import_data.py
-git commit -m "Add backup data for import"
+git commit -m "Add backup data for auto-import"
 git push
 ```
 
-2. No Railway, o deploy será automático
+### 2. Railway faz o deploy automático
 
-### Opção B: Upload Manual via Railway CLI
+O bot vai:
+- Detectar o arquivo `backup_dados.json`
+- Importar automaticamente:
+  - 7 caixinhas
+  - 18 transações
+  - 16 estabelecimentos
+  - 1 configuração
+- Renomear para `.imported` (não importa de novo)
 
-```bash
-railway up backup_dados.json
-railway run python import_data.py
+### 3. Verificação
+
+Confira nos logs do Railway:
+```
+Backup encontrado! Importando dados...
+OK 7 caixinhas processadas
+OK 18 transacoes importadas
+OK 16 estabelecimentos processados
+OK 1 configuracoes importadas
+Importacao concluida com sucesso!
 ```
 
-## Passo 3: Importar no Railway
-
-1. Acesse o **Dashboard do Railway**
-2. Vá em **Deployments** do seu bot
-3. Clique nos **3 pontinhos** → **View Logs**
-4. Abra o **Shell** (ícone de terminal)
-5. Execute:
-
-```bash
-python import_data.py
-```
-
-Pronto! Todos os dados serão importados.
-
-## Verificação
-
-Após importar, teste no Telegram:
+Teste no Telegram:
 - `/caixinhas` - Deve mostrar suas 7 caixinhas
 - `/historico` - Deve mostrar as 18 transações
 
 ## Importante
 
-- ⚠️ Execute `import_data.py` APENAS UMA VEZ
-- ⚠️ Executar novamente pode duplicar dados (ele tem proteção, mas evite)
-- ✅ O script ignora caixinhas/estabelecimentos duplicados automaticamente
-
-## Alternativa: Via Variável de Ambiente
-
-Se o Railway não permitir upload de arquivos, você pode:
-
-1. Copiar o conteúdo de `backup_dados.json`
-2. Criar uma variável de ambiente `BACKUP_DATA` no Railway
-3. Colar o JSON lá
-4. Modificar `import_data.py` para ler da variável
-
-Mas a opção A (GitHub) é mais fácil!
+- ✅ Importa automaticamente UMA VEZ
+- ✅ Não duplica (arquivo é renomeado)
+- ✅ Tem proteção contra duplicatas
+- ✅ Totalmente automático, zero configuração!

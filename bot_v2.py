@@ -1296,6 +1296,19 @@ async def ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     """Inicia o bot"""
+    # Auto-importa dados se existir backup
+    import os.path
+    if os.path.exists('backup_dados.json'):
+        logger.info("Backup encontrado! Importando dados...")
+        try:
+            from import_data import import_data
+            import_data()
+            # Renomeia para não importar de novo
+            os.rename('backup_dados.json', 'backup_dados.json.imported')
+            logger.info("Dados importados com sucesso!")
+        except Exception as e:
+            logger.error(f"Erro ao importar dados: {e}")
+
     token = os.getenv('TELEGRAM_BOT_TOKEN')
 
     if not token:
