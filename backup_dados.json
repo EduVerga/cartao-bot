@@ -1,0 +1,346 @@
+{
+  "caixinhas": [
+    {
+      "id": 1,
+      "user_id": 2146228904,
+      "nome": "Mercado",
+      "limite": 1000.0,
+      "gasto_atual": 275.73,
+      "criado_em": "2025-11-26T14:40:43.066353"
+    },
+    {
+      "id": 2,
+      "user_id": 2146228904,
+      "nome": "Combustível",
+      "limite": 1000.0,
+      "gasto_atual": 189.43,
+      "criado_em": "2025-11-26T14:40:55.794381"
+    },
+    {
+      "id": 3,
+      "user_id": 2146228904,
+      "nome": "Barbeiro",
+      "limite": 150.0,
+      "gasto_atual": 75.0,
+      "criado_em": "2025-11-26T14:41:15.391584"
+    },
+    {
+      "id": 4,
+      "user_id": 2146228904,
+      "nome": "Bebê",
+      "limite": 1000.0,
+      "gasto_atual": 481.86,
+      "criado_em": "2025-11-26T14:41:42.304052"
+    },
+    {
+      "id": 5,
+      "user_id": 2146228904,
+      "nome": "Comidinhas",
+      "limite": 600.0,
+      "gasto_atual": 342.63,
+      "criado_em": "2025-11-26T15:09:28.510536"
+    },
+    {
+      "id": 6,
+      "user_id": 2146228904,
+      "nome": "Serviços",
+      "limite": 200.0,
+      "gasto_atual": 16.0,
+      "criado_em": "2025-11-26T15:10:39.235047"
+    },
+    {
+      "id": 7,
+      "user_id": 2146228904,
+      "nome": "Farmácia",
+      "limite": 300.0,
+      "gasto_atual": 195.19,
+      "criado_em": "2025-11-26T15:23:32.453744"
+    }
+  ],
+  "transacoes": [
+    {
+      "id": 1,
+      "user_id": 2146228904,
+      "caixinha_id": 3,
+      "valor": 75.0,
+      "estabelecimento": "GUSTAVO BATISTA LEONIDAS",
+      "categoria": "Barbeiro",
+      "data_transacao": "2025-11-26T00:00:00",
+      "criado_em": "2025-11-26T14:42:48.579496"
+    },
+    {
+      "id": 2,
+      "user_id": 2146228904,
+      "caixinha_id": 4,
+      "valor": 280.0,
+      "estabelecimento": "CLINICA OSTEOVITAL LTDA",
+      "categoria": "Bebê",
+      "data_transacao": "2025-11-26T00:00:00",
+      "criado_em": "2025-11-26T14:52:24.227195"
+    },
+    {
+      "id": 3,
+      "user_id": 2146228904,
+      "caixinha_id": 5,
+      "valor": 74.7,
+      "estabelecimento": "MANIA DE CHURRASCO",
+      "categoria": "Comidinhas",
+      "data_transacao": "2025-11-20T00:00:00",
+      "criado_em": "2025-11-26T15:09:55.584365"
+    },
+    {
+      "id": 4,
+      "user_id": 2146228904,
+      "caixinha_id": 5,
+      "valor": 31.95,
+      "estabelecimento": "BACIODILATTE",
+      "categoria": "Comidinhas",
+      "data_transacao": "2025-11-20T00:00:00",
+      "criado_em": "2025-11-26T15:11:08.964878"
+    },
+    {
+      "id": 5,
+      "user_id": 2146228904,
+      "caixinha_id": 6,
+      "valor": 16.0,
+      "estabelecimento": "GEMAXI ADMINISTRA",
+      "categoria": "Serviços",
+      "data_transacao": "2025-11-20T00:00:00",
+      "criado_em": "2025-11-26T15:11:36.345330"
+    },
+    {
+      "id": 6,
+      "user_id": 2146228904,
+      "caixinha_id": 5,
+      "valor": 53.96,
+      "estabelecimento": "TREVISANJUNDIAI",
+      "categoria": "Comidinhas",
+      "data_transacao": "2025-11-21T00:00:00",
+      "criado_em": "2025-11-26T15:12:07.686089"
+    },
+    {
+      "id": 7,
+      "user_id": 2146228904,
+      "caixinha_id": 1,
+      "valor": 9.98,
+      "estabelecimento": "STARFILE",
+      "categoria": "Mercado",
+      "data_transacao": "2025-11-22T00:00:00",
+      "criado_em": "2025-11-26T15:12:37.685699"
+    },
+    {
+      "id": 8,
+      "user_id": 2146228904,
+      "caixinha_id": 1,
+      "valor": 197.47,
+      "estabelecimento": "IRMAOS BOA",
+      "categoria": "Mercado",
+      "data_transacao": "2025-11-23T00:00:00",
+      "criado_em": "2025-11-26T15:13:50.055177"
+    },
+    {
+      "id": 9,
+      "user_id": 2146228904,
+      "caixinha_id": 5,
+      "valor": 63.8,
+      "estabelecimento": "MAURICIO ISMAEL ME",
+      "categoria": "Comidinhas",
+      "data_transacao": "2025-11-24T00:00:00",
+      "criado_em": "2025-11-26T15:15:43.653724"
+    },
+    {
+      "id": 10,
+      "user_id": 2146228904,
+      "caixinha_id": 2,
+      "valor": 189.43,
+      "estabelecimento": "AUTO POSTO CAMP IMIGRAN",
+      "categoria": "Combustível",
+      "data_transacao": "2025-11-23T00:00:00",
+      "criado_em": "2025-11-26T15:17:38.339837"
+    },
+    {
+      "id": 11,
+      "user_id": 2146228904,
+      "caixinha_id": 1,
+      "valor": 5.99,
+      "estabelecimento": "STARFILE",
+      "categoria": "Mercado",
+      "data_transacao": "2025-11-24T00:00:00",
+      "criado_em": "2025-11-26T15:17:58.535173"
+    },
+    {
+      "id": 12,
+      "user_id": 2146228904,
+      "caixinha_id": 1,
+      "valor": 25.48,
+      "estabelecimento": "STARFILE",
+      "categoria": "Mercado",
+      "data_transacao": "2025-11-25T00:00:00",
+      "criado_em": "2025-11-26T15:18:21.401371"
+    },
+    {
+      "id": 13,
+      "user_id": 2146228904,
+      "caixinha_id": 1,
+      "valor": 36.81,
+      "estabelecimento": "PANIFICADORA BELA VITA",
+      "categoria": "Mercado",
+      "data_transacao": "2025-11-26T00:00:00",
+      "criado_em": "2025-11-26T15:18:51.940866"
+    },
+    {
+      "id": 14,
+      "user_id": 2146228904,
+      "caixinha_id": 7,
+      "valor": 195.19,
+      "estabelecimento": "DROGARIA SOL PHARM",
+      "categoria": "Farmácia",
+      "data_transacao": "2025-11-22T00:00:00",
+      "criado_em": "2025-11-26T15:23:32.464509"
+    },
+    {
+      "id": 15,
+      "user_id": 2146228904,
+      "caixinha_id": 4,
+      "valor": 98.88,
+      "estabelecimento": "IFD*ORGANIZACAO FARMAC",
+      "categoria": "Bebê",
+      "data_transacao": "2025-11-24T00:00:00",
+      "criado_em": "2025-11-26T15:24:31.919292"
+    },
+    {
+      "id": 16,
+      "user_id": 2146228904,
+      "caixinha_id": 4,
+      "valor": 102.98,
+      "estabelecimento": "DROGARIA SOUZA E R",
+      "categoria": "Bebê",
+      "data_transacao": "2025-11-24T00:00:00",
+      "criado_em": "2025-11-26T15:25:13.746598"
+    },
+    {
+      "id": 17,
+      "user_id": 2146228904,
+      "caixinha_id": 5,
+      "valor": 37.22,
+      "estabelecimento": "TCHÊ DO PEIXE",
+      "categoria": "Comidinhas",
+      "data_transacao": "2025-11-26T15:26:14.372456",
+      "criado_em": "2025-11-26T15:26:26.165839"
+    },
+    {
+      "id": 18,
+      "user_id": 2146228904,
+      "caixinha_id": 5,
+      "valor": 81.0,
+      "estabelecimento": "MLMPASTELARIA",
+      "categoria": "Comidinhas",
+      "data_transacao": "2025-11-26T00:00:00",
+      "criado_em": "2025-11-26T18:09:11.474075"
+    }
+  ],
+  "estabelecimentos": [
+    {
+      "id": 1,
+      "user_id": 2146228904,
+      "nome_estabelecimento": "GUSTAVO BATISTA LEONIDAS",
+      "caixinha_id": 3
+    },
+    {
+      "id": 2,
+      "user_id": 2146228904,
+      "nome_estabelecimento": "CLINICA OSTEOVITAL LTDA",
+      "caixinha_id": 4
+    },
+    {
+      "id": 3,
+      "user_id": 2146228904,
+      "nome_estabelecimento": "MANIA DE CHURRASCO",
+      "caixinha_id": 5
+    },
+    {
+      "id": 4,
+      "user_id": 2146228904,
+      "nome_estabelecimento": "BACIODILATTE",
+      "caixinha_id": 5
+    },
+    {
+      "id": 5,
+      "user_id": 2146228904,
+      "nome_estabelecimento": "GEMAXI ADMINISTRA",
+      "caixinha_id": 6
+    },
+    {
+      "id": 6,
+      "user_id": 2146228904,
+      "nome_estabelecimento": "TREVISANJUNDIAI",
+      "caixinha_id": 5
+    },
+    {
+      "id": 7,
+      "user_id": 2146228904,
+      "nome_estabelecimento": "STARFILE",
+      "caixinha_id": 1
+    },
+    {
+      "id": 8,
+      "user_id": 2146228904,
+      "nome_estabelecimento": "IRMAOS BOA",
+      "caixinha_id": 1
+    },
+    {
+      "id": 9,
+      "user_id": 2146228904,
+      "nome_estabelecimento": "MAURICIO ISMAEL ME",
+      "caixinha_id": 5
+    },
+    {
+      "id": 10,
+      "user_id": 2146228904,
+      "nome_estabelecimento": "AUTO POSTO CAMP IMIGRAN",
+      "caixinha_id": 2
+    },
+    {
+      "id": 11,
+      "user_id": 2146228904,
+      "nome_estabelecimento": "PANIFICADORA BELA VITA",
+      "caixinha_id": 1
+    },
+    {
+      "id": 12,
+      "user_id": 2146228904,
+      "nome_estabelecimento": "DROGARIA SOL PHARM",
+      "caixinha_id": 7
+    },
+    {
+      "id": 13,
+      "user_id": 2146228904,
+      "nome_estabelecimento": "IFD*ORGANIZACAO FARMAC",
+      "caixinha_id": 4
+    },
+    {
+      "id": 14,
+      "user_id": 2146228904,
+      "nome_estabelecimento": "DROGARIA SOUZA E R",
+      "caixinha_id": 4
+    },
+    {
+      "id": 15,
+      "user_id": 2146228904,
+      "nome_estabelecimento": "TCHÊ DO PEIXE",
+      "caixinha_id": 5
+    },
+    {
+      "id": 16,
+      "user_id": 2146228904,
+      "nome_estabelecimento": "MLMPASTELARIA",
+      "caixinha_id": 5
+    }
+  ],
+  "configuracoes": [
+    {
+      "user_id": 2146228904,
+      "dia_fechamento": 20
+    }
+  ]
+}
