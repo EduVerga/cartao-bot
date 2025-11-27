@@ -83,6 +83,25 @@ class ConfiguracaoUsuario(Base):
         return f"<Config User {self.user_id}: Fechamento dia {self.dia_fechamento}>"
 
 
+class GastoRecorrente(Base):
+    """Modelo para gastos recorrentes"""
+    __tablename__ = 'gastos_recorrentes'
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, nullable=False)
+    caixinha_id = Column(Integer, ForeignKey('caixinhas.id'))
+    descricao = Column(String(200), nullable=False)
+    valor = Column(Float, nullable=False)
+    dia_vencimento = Column(Integer, nullable=False)  # Dia do mês (1-28)
+    ativo = Column(Integer, default=1)  # 1 = ativo, 0 = inativo
+    criado_em = Column(DateTime, default=datetime.now)
+
+    caixinha = relationship("Caixinha")
+
+    def __repr__(self):
+        return f"<GastoRecorrente {self.descricao}: R$ {self.valor:.2f} dia {self.dia_vencimento}>"
+
+
 class Database:
     """Gerenciador do banco de dados"""
 
@@ -209,12 +228,71 @@ class Database:
         self.session.commit()
         return len(caixinhas)
 
+    def criar_gasto_recorrente(self, user_id: int, caixinha_id: int, descricao: str, valor: float, dia_vencimento: int):
+        """Cria um novo gasto recorrente"""
+        gasto = GastoRecorrente(
+            user_id=user_id,
+            caixinha_id=caixinha_id,
+            descricao=descricao,
+            valor=valor,
+            dia_vencimento=dia_vencimento
+        )
+        self.session.add(gasto)
+        self.session.commit()
+        return gasto
+
+    def listar_gastos_recorrentes(self, user_id: int, apenas_ativos: bool = True):
+        """Lista todos os gastos recorrentes do usuário"""
+        query = self.session.query(GastoRecorrente).filter_by(user_id=user_id)
+        if apenas_ativos:
+            query = query.filter_by(ativo=1)
+        return query.order_by(GastoRecorrente.dia_vencimento).all()
+
+    def buscar_gasto_recorrente_por_id(self, gasto_id: int):
+        """Busca um gasto recorrente por ID"""
+        return self.session.query(GastoRecorrente).get(gasto_id)
+
+    def editar_gasto_recorrente(self, gasto_id: int, **kwargs):
+        """Edita um gasto recorrente"""
+        gasto = self.session.query(GastoRecorrente).get(gasto_id)
+        if gasto:
+            for key, value in kwargs.items():
+                if hasattr(gasto, key):
+                    setattr(gasto, key, value)
+            self.session.commit()
+            return gasto
+        return None
+
+    def desativar_gasto_recorrente(self, gasto_id: int):
+        """Desativa um gasto recorrente"""
+        gasto = self.session.query(GastoRecorrente).get(gasto_id)
+        if gasto:
+            gasto.ativo = 0
+            self.session.commit()
+            return gasto
+        return None
+
+    def deletar_gasto_recorrente(self, gasto_id: int):
+        """Deleta um gasto recorrente"""
+        gasto = self.session.query(GastoRecorrente).get(gasto_id)
+        if gasto:
+            self.session.delete(gasto)
+            self.session.commit()
+            return True
+        return False
+
+    def calcular_total_recorrentes_mes(self, user_id: int):
+        """Calcula o total de gastos recorrentes do mês"""
+        gastos = self.listar_gastos_recorrentes(user_id, apenas_ativos=True)
+        return sum(g.valor for g in gastos)
+
     def resetar_tudo_usuario(self, user_id: int):
         """
         Deleta TODOS os dados de um usuário específico:
         - Todas as transações
         - Todos os estabelecimentos conhecidos
         - Todas as caixinhas
+        - Gastos recorrentes
         - Configurações (dia de fechamento)
 
         O usuário volta ao estado inicial, como se nunca tivesse usado o bot.
@@ -229,7 +307,10 @@ class Database:
             # 3. Deleta todas as caixinhas (CASCADE vai deletar transações relacionadas automaticamente)
             self.session.query(Caixinha).filter_by(user_id=user_id).delete()
 
-            # 4. Deleta configurações do usuário
+            # 4. Deleta gastos recorrentes
+            self.session.query(GastoRecorrente).filter_by(user_id=user_id).delete()
+
+            # 5. Deleta configurações do usuário
             self.session.query(ConfiguracaoUsuario).filter_by(user_id=user_id).delete()
 
             self.session.commit()

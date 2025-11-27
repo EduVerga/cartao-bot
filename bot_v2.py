@@ -141,7 +141,13 @@ Envie uma foto do comprovante do cartão de crédito e eu vou:
 /dicas <nome> - Dicas personalizadas de economia
   Exemplo: /dicas Mercado
 
-🔄 **Outros:**
+🔄 **Gastos Recorrentes:**
+/criar_recorrente <desc> | <caixinha> | <valor> | <dia>
+  Exemplo: /criar_recorrente Netflix | Streaming | 45.90 | 15
+/recorrentes - Ver todos os gastos recorrentes
+/remover_recorrente <ID> - Remover um gasto recorrente
+
+🔧 **Outros:**
 /resetar_tudo CONFIRMO - Apagar TODOS os seus dados
 /ajuda - Ver esta mensagem novamente
 
@@ -751,6 +757,167 @@ async def dicas(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"✅ **{caixinha.nome}** está em boa situação!\n\n"
             f"Continue controlando seus gastos. Você está no caminho certo! 💪"
         )
+
+
+async def criar_recorrente(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /criar_recorrente <descricao> | <caixinha> | <valor> | <dia>"""
+    user_id = update.effective_user.id
+
+    if not is_authorized(user_id):
+        await update.message.reply_text("🚫 Acesso não autorizado.")
+        return
+
+    if len(context.args) < 4:
+        await update.message.reply_text(
+            "❌ Uso correto: /criar_recorrente <descricao> | <caixinha> | <valor> | <dia>\n\n"
+            "Exemplo: /criar_recorrente Netflix | Streaming | 45.90 | 15\n"
+            "Isso cria um gasto recorrente de R$ 45,90 todo dia 15"
+        )
+        return
+
+    try:
+        # Junta todos os args e separa por pipe
+        texto_completo = ' '.join(context.args)
+        partes = [p.strip() for p in texto_completo.split('|')]
+
+        if len(partes) != 4:
+            await update.message.reply_text(
+                "❌ Use | para separar os campos!\n\n"
+                "Exemplo: /criar_recorrente Netflix | Streaming | 45.90 | 15"
+            )
+            return
+
+        descricao = partes[0]
+        nome_caixinha = partes[1]
+        valor = float(partes[2])
+        dia = int(partes[3])
+
+        if valor <= 0:
+            await update.message.reply_text("❌ O valor deve ser maior que zero!")
+            return
+
+        if dia < 1 or dia > 28:
+            await update.message.reply_text("❌ O dia deve ser entre 1 e 28!")
+            return
+
+        # Busca caixinha
+        caixinha = db.buscar_caixinha_por_categoria(user_id, nome_caixinha)
+        if not caixinha:
+            await update.message.reply_text(
+                f"❌ Caixinha '{nome_caixinha}' não encontrada.\n\n"
+                f"Use /caixinhas para ver suas caixinhas."
+            )
+            return
+
+        # Cria gasto recorrente
+        gasto = db.criar_gasto_recorrente(
+            user_id=user_id,
+            caixinha_id=caixinha.id,
+            descricao=descricao,
+            valor=valor,
+            dia_vencimento=dia
+        )
+
+        await update.message.reply_text(
+            f"✅ **Gasto recorrente criado!**\n\n"
+            f"🔄 {gasto.descricao}\n"
+            f"💰 R$ {gasto.valor:.2f}\n"
+            f"📦 Caixinha: {caixinha.nome}\n"
+            f"📅 Vencimento: Todo dia {gasto.dia_vencimento}\n\n"
+            f"Use /recorrentes para ver todos os seus gastos recorrentes."
+        )
+
+    except ValueError:
+        await update.message.reply_text("❌ Valor ou dia inválidos! Use números válidos.")
+    except Exception as e:
+        logger.error(f"Erro ao criar gasto recorrente: {e}")
+        await update.message.reply_text("❌ Erro ao criar gasto recorrente. Tente novamente.")
+
+
+async def listar_recorrentes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /recorrentes - Lista todos os gastos recorrentes"""
+    user_id = update.effective_user.id
+
+    if not is_authorized(user_id):
+        await update.message.reply_text("🚫 Acesso não autorizado.")
+        return
+
+    gastos = db.listar_gastos_recorrentes(user_id)
+
+    if not gastos:
+        await update.message.reply_text(
+            "🔄 **Você não tem gastos recorrentes cadastrados.**\n\n"
+            "Crie um com:\n"
+            "/criar_recorrente <descricao> | <caixinha> | <valor> | <dia>\n\n"
+            "Exemplo:\n"
+            "/criar_recorrente Netflix | Streaming | 45.90 | 15"
+        )
+        return
+
+    total_mensal = db.calcular_total_recorrentes_mes(user_id)
+
+    msg = f"🔄 **Seus Gastos Recorrentes** (Total: R$ {total_mensal:.2f}/mês)\n\n"
+
+    for g in gastos:
+        msg += (
+            f"📌 **{g.descricao}**\n"
+            f"   💰 R$ {g.valor:.2f}\n"
+            f"   📦 {g.caixinha.nome}\n"
+            f"   📅 Dia {g.dia_vencimento}\n"
+            f"   ID: {g.id}\n\n"
+        )
+
+    msg += (
+        f"💡 Para remover um gasto recorrente:\n"
+        f"/remover_recorrente <ID>"
+    )
+
+    await update.message.reply_text(msg)
+
+
+async def remover_recorrente(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /remover_recorrente <ID>"""
+    user_id = update.effective_user.id
+
+    if not is_authorized(user_id):
+        await update.message.reply_text("🚫 Acesso não autorizado.")
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "❌ Uso correto: /remover_recorrente <ID>\n\n"
+            "Use /recorrentes para ver os IDs dos seus gastos recorrentes."
+        )
+        return
+
+    try:
+        gasto_id = int(context.args[0])
+        gasto = db.buscar_gasto_recorrente_por_id(gasto_id)
+
+        if not gasto or gasto.user_id != user_id:
+            await update.message.reply_text(
+                f"❌ Gasto recorrente não encontrado.\n\n"
+                f"Use /recorrentes para ver seus gastos."
+            )
+            return
+
+        descricao = gasto.descricao
+        valor = gasto.valor
+
+        if db.deletar_gasto_recorrente(gasto_id):
+            await update.message.reply_text(
+                f"✅ **Gasto recorrente removido!**\n\n"
+                f"🔄 {descricao}\n"
+                f"💰 R$ {valor:.2f}"
+            )
+        else:
+            await update.message.reply_text("❌ Erro ao remover gasto recorrente.")
+
+    except ValueError:
+        await update.message.reply_text("❌ ID inválido! Use um número.")
+    except Exception as e:
+        logger.error(f"Erro ao remover gasto recorrente: {e}")
+        await update.message.reply_text("❌ Erro ao remover gasto recorrente.")
 
 
 async def processar_imagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1692,6 +1859,9 @@ def main():
     application.add_handler(CommandHandler("alertas", alertas))
     application.add_handler(CommandHandler("previsoes", previsoes))
     application.add_handler(CommandHandler("dicas", dicas))
+    application.add_handler(CommandHandler("criar_recorrente", criar_recorrente))
+    application.add_handler(CommandHandler("recorrentes", listar_recorrentes))
+    application.add_handler(CommandHandler("remover_recorrente", remover_recorrente))
     application.add_handler(CommandHandler("resetar_tudo", resetar_tudo))
     application.add_handler(MessageHandler(filters.PHOTO, processar_imagem))
     application.add_handler(MessageHandler(filters.VOICE, processar_audio))
