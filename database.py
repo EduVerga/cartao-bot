@@ -146,6 +146,24 @@ class Database:
             return True
         return False
 
+    def editar_limite_caixinha(self, caixinha_id: int, novo_limite: float):
+        """Edita o limite de uma caixinha"""
+        caixinha = self.session.query(Caixinha).get(caixinha_id)
+        if caixinha:
+            caixinha.limite = novo_limite
+            self.session.commit()
+            return caixinha
+        return None
+
+    def renomear_caixinha(self, caixinha_id: int, novo_nome: str):
+        """Renomeia uma caixinha"""
+        caixinha = self.session.query(Caixinha).get(caixinha_id)
+        if caixinha:
+            caixinha.nome = novo_nome
+            self.session.commit()
+            return caixinha
+        return None
+
     def buscar_estabelecimento_conhecido(self, user_id: int, nome_estabelecimento: str):
         """Busca estabelecimento conhecido na memória"""
         return self.session.query(EstabelecimentoConhecido).filter_by(

@@ -1,0 +1,15 @@
+[Unit]
+Description=Cartao Bot - Telegram Bot para Controle de Gastos
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/cartao-bot
+Environment="PATH=/home/ubuntu/cartao-bot/venv/bin"
+ExecStart=/home/ubuntu/cartao-bot/venv/bin/python bot_v2.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

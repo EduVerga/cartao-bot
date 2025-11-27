@@ -109,19 +109,32 @@ Envie uma foto do comprovante do cartão de crédito e eu vou:
 
 💰 **Comandos disponíveis:**
 
-/caixinhas - Ver todas as suas caixinhas
+📦 **Gerenciar Caixinhas:**
 /criar <nome> <limite> - Criar nova caixinha
   Exemplo: /criar Alimentação 1000
+/caixinhas - Ver todas as suas caixinhas
+/editar_limite <nome> <novo_limite> - Ajustar limite
+  Exemplo: /editar_limite Mercado 1500
+/renomear <nome_atual> > <novo_nome> - Renomear caixinha
+  Exemplo: /renomear Mercado > Supermercado
+/deletar <nome> - Deletar caixinha (cuidado!)
+  Exemplo: /deletar Mercado
 
+⚙️ **Configurações:**
 /fechamento <dia> - Definir dia de fechamento do cartão
   Exemplo: /fechamento 20
   Use /fechamento sem número para ver o dia configurado
 
+📊 **Relatórios:**
 /recentes - Ver últimas 10 transações
 /historico <meses> - Histórico consolidado
   Exemplo: /historico 12 (últimos 12 meses)
   Opções: 6, 12, 18 ou 24 meses
 /relatorio - Relatório do mês atual
+/grafico - Gerar gráficos visuais dos seus gastos
+
+🔄 **Outros:**
+/resetar_tudo CONFIRMO - Apagar TODOS os seus dados
 /ajuda - Ver esta mensagem novamente
 
 🔄 **Automações:**
@@ -260,6 +273,169 @@ async def listar_caixinhas(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     await update.message.reply_text(mensagem)
+
+
+async def editar_limite(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /editar_limite <nome_caixinha> <novo_limite>"""
+    user_id = update.effective_user.id
+
+    if not is_authorized(user_id):
+        await update.message.reply_text("🚫 Acesso não autorizado.")
+        return
+
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "❌ Uso correto: /editar_limite <nome> <novo_limite>\n\n"
+            "Exemplo: /editar_limite Mercado 1500"
+        )
+        return
+
+    try:
+        nome = ' '.join(context.args[:-1])
+        novo_limite = float(context.args[-1])
+
+        if novo_limite <= 0:
+            await update.message.reply_text("❌ O limite deve ser maior que zero!")
+            return
+
+        # Busca a caixinha
+        caixinha = db.buscar_caixinha_por_categoria(user_id, nome)
+
+        if not caixinha:
+            await update.message.reply_text(
+                f"❌ Caixinha '{nome}' não encontrada.\n\n"
+                f"Use /caixinhas para ver suas caixinhas."
+            )
+            return
+
+        limite_antigo = caixinha.limite
+        caixinha = db.editar_limite_caixinha(caixinha.id, novo_limite)
+
+        await update.message.reply_text(
+            f"✅ Limite atualizado com sucesso!\n\n"
+            f"📦 **{caixinha.nome}**\n"
+            f"💰 Limite anterior: R$ {limite_antigo:.2f}\n"
+            f"💰 Novo limite: R$ {caixinha.limite:.2f}\n\n"
+            f"📊 Gasto atual: R$ {caixinha.gasto_atual:.2f}\n"
+            f"💵 Saldo restante: R$ {caixinha.saldo_restante:.2f}"
+        )
+
+    except ValueError:
+        await update.message.reply_text("❌ O novo limite deve ser um número válido!")
+    except Exception as e:
+        logger.error(f"Erro ao editar limite: {e}")
+        await update.message.reply_text("❌ Erro ao editar limite. Tente novamente.")
+
+
+async def renomear(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /renomear <nome_atual> > <novo_nome>"""
+    user_id = update.effective_user.id
+
+    if not is_authorized(user_id):
+        await update.message.reply_text("🚫 Acesso não autorizado.")
+        return
+
+    if len(context.args) < 3 or '>' not in context.args:
+        await update.message.reply_text(
+            "❌ Uso correto: /renomear <nome_atual> > <novo_nome>\n\n"
+            "Exemplo: /renomear Mercado > Supermercado"
+        )
+        return
+
+    try:
+        # Encontra o separador >
+        separador_idx = context.args.index('>')
+
+        nome_atual = ' '.join(context.args[:separador_idx])
+        novo_nome = ' '.join(context.args[separador_idx + 1:])
+
+        if not nome_atual or not novo_nome:
+            await update.message.reply_text(
+                "❌ Uso correto: /renomear <nome_atual> > <novo_nome>\n\n"
+                "Exemplo: /renomear Mercado > Supermercado"
+            )
+            return
+
+        # Busca a caixinha
+        caixinha = db.buscar_caixinha_por_categoria(user_id, nome_atual)
+
+        if not caixinha:
+            await update.message.reply_text(
+                f"❌ Caixinha '{nome_atual}' não encontrada.\n\n"
+                f"Use /caixinhas para ver suas caixinhas."
+            )
+            return
+
+        caixinha = db.renomear_caixinha(caixinha.id, novo_nome)
+
+        await update.message.reply_text(
+            f"✅ Caixinha renomeada com sucesso!\n\n"
+            f"📦 Nome anterior: **{nome_atual}**\n"
+            f"📦 Novo nome: **{caixinha.nome}**\n\n"
+            f"💰 Limite: R$ {caixinha.limite:.2f}\n"
+            f"📊 Gasto atual: R$ {caixinha.gasto_atual:.2f}"
+        )
+
+    except ValueError:
+        await update.message.reply_text(
+            "❌ Formato incorreto. Use:\n"
+            "/renomear <nome_atual> > <novo_nome>"
+        )
+    except Exception as e:
+        logger.error(f"Erro ao renomear caixinha: {e}")
+        await update.message.reply_text("❌ Erro ao renomear caixinha. Tente novamente.")
+
+
+async def deletar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /deletar <nome_caixinha>"""
+    user_id = update.effective_user.id
+
+    if not is_authorized(user_id):
+        await update.message.reply_text("🚫 Acesso não autorizado.")
+        return
+
+    if len(context.args) == 0:
+        await update.message.reply_text(
+            "❌ Uso correto: /deletar <nome>\n\n"
+            "Exemplo: /deletar Mercado\n\n"
+            "⚠️ ATENÇÃO: Isso vai deletar a caixinha e TODAS as transações relacionadas!"
+        )
+        return
+
+    try:
+        nome = ' '.join(context.args)
+
+        # Busca a caixinha
+        caixinha = db.buscar_caixinha_por_categoria(user_id, nome)
+
+        if not caixinha:
+            await update.message.reply_text(
+                f"❌ Caixinha '{nome}' não encontrada.\n\n"
+                f"Use /caixinhas para ver suas caixinhas."
+            )
+            return
+
+        # Salva info antes de deletar
+        nome_deletado = caixinha.nome
+        gasto = caixinha.gasto_atual
+        limite = caixinha.limite
+
+        # Deleta
+        sucesso = db.deletar_caixinha(caixinha.id)
+
+        if sucesso:
+            await update.message.reply_text(
+                f"✅ Caixinha deletada com sucesso!\n\n"
+                f"📦 **{nome_deletado}** foi removida.\n"
+                f"💰 Tinha R$ {gasto:.2f} de R$ {limite:.2f}\n\n"
+                f"⚠️ Todas as transações relacionadas também foram deletadas."
+            )
+        else:
+            await update.message.reply_text("❌ Erro ao deletar caixinha. Tente novamente.")
+
+    except Exception as e:
+        logger.error(f"Erro ao deletar caixinha: {e}")
+        await update.message.reply_text("❌ Erro ao deletar caixinha. Tente novamente.")
 
 
 async def recentes(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -413,6 +589,72 @@ async def relatorio(update: Update, context: ContextTypes.DEFAULT_TYPE):
 """
 
     await update.message.reply_text(mensagem)
+
+
+async def grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /grafico - Gera gráficos visuais dos gastos"""
+    user_id = update.effective_user.id
+
+    if not is_authorized(user_id):
+        await update.message.reply_text("🚫 Acesso não autorizado.")
+        return
+
+    caixinhas = db.listar_caixinhas(user_id)
+
+    if not caixinhas:
+        await update.message.reply_text(
+            "📊 Você ainda não tem caixinhas para gerar gráficos!\n\n"
+            "Crie uma com: /criar <nome> <limite>"
+        )
+        return
+
+    # Verifica se tem gastos registrados
+    if all(c.gasto_atual == 0 for c in caixinhas):
+        await update.message.reply_text(
+            "📊 Você ainda não tem gastos registrados!\n\n"
+            "Envie uma foto de comprovante, áudio ou texto para registrar gastos."
+        )
+        return
+
+    await update.message.reply_text("📊 Gerando gráficos... aguarde um momento!")
+
+    try:
+        from graficos import gerar_grafico_percentual, gerar_grafico_barras, gerar_grafico_pizza
+        from telegram import InputMediaPhoto
+
+        # Gera os 3 gráficos
+        graph_percentual = gerar_grafico_percentual(caixinhas)
+        graph_barras = gerar_grafico_barras(caixinhas)
+        graph_pizza = gerar_grafico_pizza(caixinhas)
+
+        # Envia os gráficos em um álbum (mídia agrupada)
+        await update.message.reply_media_group([
+            InputMediaPhoto(graph_percentual, caption="📊 Percentual de Uso por Caixinha"),
+            InputMediaPhoto(graph_barras, caption="📊 Gastos vs Limites"),
+            InputMediaPhoto(graph_pizza, caption="📊 Distribuição de Gastos")
+        ])
+
+        # Mensagem de resumo
+        total_gasto = sum(c.gasto_atual for c in caixinhas)
+        total_limite = sum(c.limite for c in caixinhas)
+        percentual_geral = (total_gasto / total_limite * 100) if total_limite > 0 else 0
+
+        await update.message.reply_text(
+            f"✅ Gráficos gerados com sucesso!\n\n"
+            f"💰 **Resumo Geral:**\n"
+            f"• Total gasto: R$ {total_gasto:.2f}\n"
+            f"• Total limites: R$ {total_limite:.2f}\n"
+            f"• Percentual usado: {percentual_geral:.1f}%\n"
+            f"• Saldo disponível: R$ {total_limite - total_gasto:.2f}"
+        )
+
+    except Exception as e:
+        logger.error(f"Erro ao gerar gráficos: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        await update.message.reply_text(
+            "❌ Erro ao gerar gráficos. Tente novamente."
+        )
 
 
 async def processar_imagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1326,9 +1568,13 @@ def main():
     application.add_handler(CommandHandler("testar_reset", testar_reset))
     application.add_handler(CommandHandler("testar_relatorio", testar_relatorio_fechamento))
     application.add_handler(CommandHandler("caixinhas", listar_caixinhas))
+    application.add_handler(CommandHandler("editar_limite", editar_limite))
+    application.add_handler(CommandHandler("renomear", renomear))
+    application.add_handler(CommandHandler("deletar", deletar))
     application.add_handler(CommandHandler("recentes", recentes))
     application.add_handler(CommandHandler("historico", historico_consolidado))
     application.add_handler(CommandHandler("relatorio", relatorio))
+    application.add_handler(CommandHandler("grafico", grafico))
     application.add_handler(CommandHandler("resetar_tudo", resetar_tudo))
     application.add_handler(MessageHandler(filters.PHOTO, processar_imagem))
     application.add_handler(MessageHandler(filters.VOICE, processar_audio))
