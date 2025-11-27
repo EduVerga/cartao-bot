@@ -22,6 +22,7 @@ from gemini_processor import ComprovanteProcessor
 from audio_processor import AudioProcessor
 from scheduler_tasks import reset_mensal_automatico, enviar_relatorio_mensal
 from scheduler_v3 import BotScheduler
+from alertas import AlertaInteligente
 
 # Carrega variáveis de ambiente
 load_dotenv()
@@ -37,6 +38,7 @@ logger = logging.getLogger(__name__)
 db = Database()
 processor = ComprovanteProcessor(api_key=os.getenv('GEMINI_API_KEY'))
 audio_processor = AudioProcessor(api_key=os.getenv('GEMINI_API_KEY'))
+alerta_sistema = AlertaInteligente(db)
 
 # ID do usuário autorizado (deixe vazio para permitir todos)
 ALLOWED_USER_ID = os.getenv('ALLOWED_USER_ID')
@@ -132,6 +134,12 @@ Envie uma foto do comprovante do cartão de crédito e eu vou:
   Opções: 6, 12, 18 ou 24 meses
 /relatorio - Relatório do mês atual
 /grafico - Gerar gráficos visuais dos seus gastos
+
+🔔 **Alertas e Previsões:**
+/alertas - Verificar alertas de todas as caixinhas
+/previsoes - Ver previsões de gastos e quando vai estourar
+/dicas <nome> - Dicas personalizadas de economia
+  Exemplo: /dicas Mercado
 
 🔄 **Outros:**
 /resetar_tudo CONFIRMO - Apagar TODOS os seus dados
@@ -657,6 +665,94 @@ async def grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+async def alertas(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /alertas - Verifica alertas de todas as caixinhas"""
+    user_id = update.effective_user.id
+
+    if not is_authorized(user_id):
+        await update.message.reply_text("🚫 Acesso não autorizado.")
+        return
+
+    caixinhas = db.listar_caixinhas(user_id)
+
+    if not caixinhas:
+        await update.message.reply_text(
+            "📊 Você ainda não tem caixinhas para monitorar!\n\n"
+            "Crie uma com: /criar <nome> <limite>"
+        )
+        return
+
+    alertas_encontrados = alerta_sistema.verificar_alertas_usuario(user_id)
+
+    if not alertas_encontrados:
+        await update.message.reply_text(
+            "✅ **Tudo sob controle!**\n\n"
+            "Nenhuma caixinha requer atenção especial no momento.\n"
+            "Continue assim! 💪"
+        )
+        return
+
+    # Envia cada alerta individualmente
+    await update.message.reply_text(f"🔔 **Encontrei {len(alertas_encontrados)} alerta(s):**\n")
+
+    for alerta in alertas_encontrados:
+        await update.message.reply_text(alerta)
+
+
+async def previsoes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /previsoes - Mostra previsões de todas as caixinhas"""
+    user_id = update.effective_user.id
+
+    if not is_authorized(user_id):
+        await update.message.reply_text("🚫 Acesso não autorizado.")
+        return
+
+    relatorio = alerta_sistema.gerar_relatorio_previsoes(user_id)
+    await update.message.reply_text(relatorio)
+
+
+async def dicas(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /dicas <nome_caixinha> - Gera dicas de economia para uma caixinha"""
+    user_id = update.effective_user.id
+
+    if not is_authorized(user_id):
+        await update.message.reply_text("🚫 Acesso não autorizado.")
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "❌ Uso correto: /dicas <nome_caixinha>\n\n"
+            "Exemplo: /dicas Mercado\n\n"
+            "Ou use /alertas para ver dicas de todas as caixinhas que precisam de atenção."
+        )
+        return
+
+    nome = ' '.join(context.args)
+    caixinha = db.buscar_caixinha_por_categoria(user_id, nome)
+
+    if not caixinha:
+        await update.message.reply_text(
+            f"❌ Caixinha '{nome}' não encontrada.\n\n"
+            f"Use /caixinhas para ver suas caixinhas."
+        )
+        return
+
+    # Gera alerta e dicas
+    msg_alerta = alerta_sistema.gerar_mensagem_alerta(caixinha)
+    msg_dicas = alerta_sistema.gerar_dicas_economia(caixinha)
+
+    if msg_alerta:
+        await update.message.reply_text(msg_alerta)
+
+    if msg_dicas:
+        await update.message.reply_text(msg_dicas)
+    else:
+        await update.message.reply_text(
+            f"✅ **{caixinha.nome}** está em boa situação!\n\n"
+            f"Continue controlando seus gastos. Você está no caminho certo! 💪"
+        )
+
+
 async def processar_imagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Processa imagem do comprovante com sistema de confirmação"""
     user_id = update.effective_user.id
@@ -809,6 +905,9 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         td = pending_transactions[trans_id]
         caixinha = db.session.query(Caixinha).get(caixinha_id)
 
+        # Salva percentual anterior para verificar se deve enviar alerta
+        percentual_anterior = caixinha.percentual_usado
+
         db.adicionar_transacao(
             user_id=td['user_id'],
             caixinha_id=caixinha.id,
@@ -859,6 +958,12 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += get_alerta_gasto(perc)
 
         await query.edit_message_text(msg)
+
+        # Verifica se deve enviar alerta inteligente
+        if alerta_sistema.deve_enviar_alerta_apos_gasto(caixinha, percentual_anterior):
+            msg_alerta = alerta_sistema.gerar_mensagem_alerta(caixinha)
+            if msg_alerta:
+                await context.bot.send_message(chat_id=user_id, text=msg_alerta)
 
     elif data.startswith("change_"):
         trans_id = data.replace("change_", "")
@@ -884,6 +989,9 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         td = pending_transactions[trans_id]
         caixinha = db.session.query(Caixinha).get(caixinha_id)
 
+        # Salva percentual anterior para verificar se deve enviar alerta
+        percentual_anterior = caixinha.percentual_usado
+
         db.adicionar_transacao(
             user_id=td['user_id'],
             caixinha_id=caixinha.id,
@@ -934,6 +1042,12 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += get_alerta_gasto(perc)
 
         await query.edit_message_text(msg)
+
+        # Verifica se deve enviar alerta inteligente
+        if alerta_sistema.deve_enviar_alerta_apos_gasto(caixinha, percentual_anterior):
+            msg_alerta = alerta_sistema.gerar_mensagem_alerta(caixinha)
+            if msg_alerta:
+                await context.bot.send_message(chat_id=user_id, text=msg_alerta)
 
     elif data.startswith("new_"):
         # Usuário quer criar nova caixinha durante o registro
@@ -1575,6 +1689,9 @@ def main():
     application.add_handler(CommandHandler("historico", historico_consolidado))
     application.add_handler(CommandHandler("relatorio", relatorio))
     application.add_handler(CommandHandler("grafico", grafico))
+    application.add_handler(CommandHandler("alertas", alertas))
+    application.add_handler(CommandHandler("previsoes", previsoes))
+    application.add_handler(CommandHandler("dicas", dicas))
     application.add_handler(CommandHandler("resetar_tudo", resetar_tudo))
     application.add_handler(MessageHandler(filters.PHOTO, processar_imagem))
     application.add_handler(MessageHandler(filters.VOICE, processar_audio))
