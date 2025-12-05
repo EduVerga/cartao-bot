@@ -147,12 +147,14 @@ Envie uma foto do comprovante do cartão de crédito e eu vou:
   Valor variável: /criar_recorrente Condominio | Moradia | 10
 /valor_recorrente <nome> <valor> - Definir valor do mês
   Exemplo: /valor_recorrente Condominio 650
+/pagar_recorrente <nome> - Marcar conta como paga
+  Exemplo: /pagar_recorrente Luz
 /recorrentes - Ver todos os gastos recorrentes e status
 /relatorio_recorrente - Relatório mensal de contas fixas
 /historico_recorrente <meses> - Histórico de contas fixas
   Exemplo: /historico_recorrente 12 (últimos 12 meses)
 /remover_recorrente <ID> - Remover um gasto recorrente
-💡 Responda "Pago" quando pagar uma conta
+💡 Também pode responder "Pago" para marcar como pago
 
 🔧 **Outros:**
 /resetar_tudo CONFIRMO - Apagar TODOS os seus dados
@@ -1109,6 +1111,80 @@ async def valor_recorrente(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Erro ao definir valor recorrente: {e}")
         await update.message.reply_text("❌ Erro ao definir valor. Tente novamente.")
+
+
+async def pagar_recorrente(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /pagar_recorrente <descricao>"""
+    user_id = update.effective_user.id
+
+    if not is_authorized(user_id):
+        await update.message.reply_text("🚫 Acesso não autorizado.")
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "❌ Uso correto: /pagar_recorrente <descricao>\n\n"
+            "Exemplo: /pagar_recorrente Luz\n"
+            "Ou: /pagar_recorrente Condominio"
+        )
+        return
+
+    try:
+        descricao = ' '.join(context.args)
+
+        # Busca gasto recorrente
+        gasto = db.buscar_gasto_recorrente_por_descricao(user_id, descricao)
+        if not gasto:
+            await update.message.reply_text(
+                f"❌ Gasto recorrente '{descricao}' não encontrado.\n\n"
+                f"Use /recorrentes para ver seus gastos recorrentes."
+            )
+            return
+
+        from datetime import datetime
+        mes_atual = datetime.now().month
+        ano_atual = datetime.now().year
+
+        # Busca/cria pagamento do mês
+        pagamento = db.obter_ou_criar_pagamento_mes(gasto.id, user_id, mes_atual, ano_atual)
+
+        # Verifica se já está pago
+        if pagamento.pago:
+            await update.message.reply_text(
+                f"✅ **{gasto.descricao}** já está marcado como pago este mês!\n\n"
+                f"📅 Pago em: {pagamento.data_pagamento.strftime('%d/%m/%Y')}"
+            )
+            return
+
+        # Verifica se tem valor definido (para variáveis)
+        if gasto.valor_variavel and not pagamento.valor:
+            await update.message.reply_text(
+                f"⚠️ **{gasto.descricao}** ainda não tem valor definido para este mês.\n\n"
+                f"Defina o valor primeiro:\n"
+                f"/valor_recorrente {gasto.descricao} <valor>\n\n"
+                f"Ou responda com o valor agora:"
+            )
+            return
+
+        # Marca como pago
+        db.marcar_recorrente_como_pago(gasto.id, user_id, mes_atual, ano_atual)
+
+        # Define valor para exibição
+        if gasto.valor_variavel:
+            valor_texto = f"R$ {pagamento.valor:.2f}"
+        else:
+            valor_texto = f"R$ {gasto.valor_padrao:.2f}"
+
+        await update.message.reply_text(
+            f"✅ **{gasto.descricao}** marcado como pago!\n\n"
+            f"💰 {valor_texto}\n"
+            f"📦 {gasto.caixinha.nome}\n"
+            f"📅 Mês: {mes_atual:02d}/{ano_atual}"
+        )
+
+    except Exception as e:
+        logger.error(f"Erro ao marcar recorrente como pago: {e}")
+        await update.message.reply_text("❌ Erro ao marcar como pago. Tente novamente.")
 
 
 async def listar_recorrentes(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2233,6 +2309,7 @@ def main():
     application.add_handler(CommandHandler("dicas", dicas))
     application.add_handler(CommandHandler("criar_recorrente", criar_recorrente))
     application.add_handler(CommandHandler("valor_recorrente", valor_recorrente))
+    application.add_handler(CommandHandler("pagar_recorrente", pagar_recorrente))
     application.add_handler(CommandHandler("recorrentes", listar_recorrentes))
     application.add_handler(CommandHandler("historico_recorrente", historico_recorrente))
     application.add_handler(CommandHandler("remover_recorrente", remover_recorrente))
