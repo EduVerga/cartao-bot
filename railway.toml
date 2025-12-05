@@ -1,0 +1,10 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "python bot_v2.py"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 10
+
+[[volumes]]
+mountPath = "/app/data"

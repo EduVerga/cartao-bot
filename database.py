@@ -1,6 +1,7 @@
 """
 Módulo de banco de dados para gerenciar caixinhas e transações
 """
+import os
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
@@ -135,7 +136,16 @@ class PagamentoRecorrente(Base):
 class Database:
     """Gerenciador do banco de dados"""
 
-    def __init__(self, db_path='cartao_bot.db'):
+    def __init__(self, db_path=None):
+        # Usa variável de ambiente DB_PATH se disponível, senão usa padrão
+        if db_path is None:
+            db_path = os.getenv('DB_PATH', 'cartao_bot.db')
+
+        # Garante que o diretório existe (importante para Railway)
+        db_dir = os.path.dirname(db_path)
+        if db_dir and not os.path.exists(db_dir):
+            os.makedirs(db_dir, exist_ok=True)
+
         self.engine = create_engine(f'sqlite:///{db_path}')
         Base.metadata.create_all(self.engine)
         Session = sessionmaker(bind=self.engine)
@@ -325,11 +335,12 @@ class Database:
         return sum(g.valor_padrao for g in gastos if g.valor_padrao)
 
     def buscar_gasto_recorrente_por_descricao(self, user_id: int, descricao: str):
-        """Busca um gasto recorrente pela descrição"""
-        return self.session.query(GastoRecorrente).filter_by(
-            user_id=user_id,
-            descricao=descricao,
-            ativo=1
+        """Busca um gasto recorrente pela descrição (case-insensitive)"""
+        from sqlalchemy import func
+        return self.session.query(GastoRecorrente).filter(
+            GastoRecorrente.user_id == user_id,
+            func.lower(GastoRecorrente.descricao) == func.lower(descricao),
+            GastoRecorrente.ativo == 1
         ).first()
 
     def obter_ou_criar_pagamento_mes(self, gasto_recorrente_id: int, user_id: int, mes: int = None, ano: int = None):
