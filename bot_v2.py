@@ -149,6 +149,8 @@ Envie uma foto do comprovante do cartão de crédito e eu vou:
   Exemplo: /valor_recorrente Condominio 650
 /recorrentes - Ver todos os gastos recorrentes e status
 /relatorio_recorrente - Relatório mensal de contas fixas
+/historico_recorrente <meses> - Histórico de contas fixas
+  Exemplo: /historico_recorrente 12 (últimos 12 meses)
 /remover_recorrente <ID> - Remover um gasto recorrente
 💡 Responda "Pago" quando pagar uma conta
 
@@ -707,6 +709,96 @@ async def relatorio_recorrente(update: Update, context: ContextTypes.DEFAULT_TYP
     if total_sem_valor > 0:
         mensagem += f"\n⚠️ {total_sem_valor} conta(s) sem valor definido\n"
         mensagem += "Use /valor_recorrente <nome> <valor>"
+
+    await update.message.reply_text(mensagem)
+
+
+async def historico_recorrente(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /historico_recorrente <meses> - Histórico de gastos recorrentes"""
+    user_id = update.effective_user.id
+
+    if not is_authorized(user_id):
+        await update.message.reply_text("🚫 Acesso não autorizado.")
+        return
+
+    # Define número de meses (padrão 6)
+    if context.args and context.args[0].isdigit():
+        num_meses = int(context.args[0])
+        if num_meses not in [3, 6, 12, 24]:
+            await update.message.reply_text(
+                "❌ Use 3, 6, 12 ou 24 meses.\n\n"
+                "Exemplo: /historico_recorrente 12"
+            )
+            return
+    else:
+        num_meses = 6
+
+    gastos = db.listar_gastos_recorrentes(user_id, apenas_ativos=True)
+
+    if not gastos:
+        await update.message.reply_text(
+            "🔄 Você não tem gastos recorrentes cadastrados.\n\n"
+            "Use /criar_recorrente para cadastrar contas fixas."
+        )
+        return
+
+    from datetime import datetime
+    from dateutil.relativedelta import relativedelta
+
+    hoje = datetime.now()
+    mensagem = f"📊 **Histórico de Gastos Recorrentes ({num_meses} meses)**\n\n"
+
+    # Para cada gasto recorrente
+    for gasto in gastos:
+        mensagem += f"📌 **{gasto.descricao}** ({gasto.caixinha.nome})\n"
+
+        total_gasto = 0
+        meses_com_valor = 0
+
+        # Percorre os últimos N meses
+        for i in range(num_meses):
+            data_mes = hoje - relativedelta(months=i)
+            mes = data_mes.month
+            ano = data_mes.year
+            mes_nome = data_mes.strftime("%b/%y")
+
+            # Busca pagamento do mês
+            pagamento = db.obter_ou_criar_pagamento_mes(gasto.id, user_id, mes, ano)
+
+            # Define valor
+            if gasto.valor_variavel:
+                valor = pagamento.valor if pagamento.valor else 0
+            else:
+                valor = gasto.valor_padrao
+
+            # Status
+            if pagamento.pago:
+                status = "✅"
+            elif valor > 0:
+                status = "⏳"
+            else:
+                status = "⚠️"
+
+            if valor > 0:
+                total_gasto += valor
+                meses_com_valor += 1
+                mensagem += f"   {mes_nome}: R$ {valor:.2f} {status}\n"
+            else:
+                mensagem += f"   {mes_nome}: - {status}\n"
+
+        # Média
+        if meses_com_valor > 0:
+            media = total_gasto / meses_com_valor
+            mensagem += f"   💰 Total: R$ {total_gasto:.2f} | Média: R$ {media:.2f}\n"
+        else:
+            mensagem += f"   💰 Sem valores registrados\n"
+
+        mensagem += "\n"
+
+    # Total geral
+    mensagem += f"{'='*40}\n\n"
+    mensagem += "💡 **Legenda:**\n"
+    mensagem += "✅ = Pago | ⏳ = Pendente | ⚠️ = Sem valor definido"
 
     await update.message.reply_text(mensagem)
 
@@ -2142,6 +2234,7 @@ def main():
     application.add_handler(CommandHandler("criar_recorrente", criar_recorrente))
     application.add_handler(CommandHandler("valor_recorrente", valor_recorrente))
     application.add_handler(CommandHandler("recorrentes", listar_recorrentes))
+    application.add_handler(CommandHandler("historico_recorrente", historico_recorrente))
     application.add_handler(CommandHandler("remover_recorrente", remover_recorrente))
     application.add_handler(CommandHandler("resetar_tudo", resetar_tudo))
     application.add_handler(MessageHandler(filters.PHOTO, processar_imagem))
