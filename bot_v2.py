@@ -2405,23 +2405,111 @@ async def menu_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
         )
 
     elif data == "action_listar_caixinhas":
-        await query.message.delete()
-        # Simula uma mensagem do usuário para chamar a função
-        fake_update = Update(
-            update_id=query.message.message_id,
-            message=query.message
+        # Chama diretamente a lógica de listar caixinhas
+        caixinhas_list = db.listar_caixinhas(user_id)
+
+        if not caixinhas_list:
+            await query.edit_message_text(
+                "📦 Você ainda não tem caixinhas cadastradas!\n\n"
+                "Crie uma com: /criar <nome> <limite>\n"
+                "Exemplo: /criar Alimentação 1000"
+            )
+            return
+
+        msg = "📦 **Suas Caixinhas:**\n\n"
+
+        for c in caixinhas_list:
+            percentual = c.percentual_usado
+            saldo = c.saldo_restante
+
+            if percentual >= 100:
+                emoji = "🔴"
+            elif percentual >= 80:
+                emoji = "🟠"
+            elif percentual >= 50:
+                emoji = "🟡"
+            else:
+                emoji = "🟢"
+
+            msg += (
+                f"{emoji} **{c.nome}**\n"
+                f"   💰 Gasto: R$ {c.gasto_atual:.2f} / R$ {c.limite:.2f}\n"
+                f"   📊 {percentual:.1f}% usado\n"
+                f"   💵 Saldo: R$ {saldo:.2f}\n\n"
+            )
+
+        msg += (
+            "💡 **Comandos:**\n"
+            "/editar_limite <nome> <novo_limite>\n"
+            "/renomear <nome> > <novo_nome>\n"
+            "/deletar <nome>"
         )
-        fake_update.effective_user = update.effective_user
-        await caixinhas(fake_update, context)
+
+        await query.edit_message_text(msg)
 
     elif data == "action_graficos":
-        await query.message.delete()
-        fake_update = Update(
-            update_id=query.message.message_id,
-            message=query.message
-        )
-        fake_update.effective_user = update.effective_user
-        await grafico(fake_update, context)
+        caixinhas_list = db.listar_caixinhas(user_id)
+
+        if not caixinhas_list:
+            await query.edit_message_text(
+                "📊 Você ainda não tem caixinhas para gerar gráficos!\n\n"
+                "Crie uma com: /criar <nome> <limite>"
+            )
+            return
+
+        # Verifica se tem gastos registrados
+        if all(c.gasto_atual == 0 for c in caixinhas_list):
+            await query.edit_message_text(
+                "📊 Você ainda não tem gastos registrados!\n\n"
+                "Envie uma foto de comprovante, áudio ou texto para registrar gastos."
+            )
+            return
+
+        await query.edit_message_text("📊 Gerando gráficos... aguarde um momento!")
+
+        try:
+            from graficos import gerar_grafico_percentual, gerar_grafico_barras, gerar_grafico_pizza
+            from telegram import InputMediaPhoto
+
+            # Gera os 3 gráficos
+            graph_percentual = gerar_grafico_percentual(caixinhas_list)
+            graph_barras = gerar_grafico_barras(caixinhas_list)
+            graph_pizza = gerar_grafico_pizza(caixinhas_list)
+
+            # Envia os gráficos em um álbum (mídia agrupada)
+            await context.bot.send_media_group(
+                chat_id=user_id,
+                media=[
+                    InputMediaPhoto(graph_percentual, caption="📊 Percentual de Uso por Caixinha"),
+                    InputMediaPhoto(graph_barras, caption="📊 Gastos vs Limites"),
+                    InputMediaPhoto(graph_pizza, caption="📊 Distribuição de Gastos")
+                ]
+            )
+
+            # Mensagem de resumo
+            total_gasto = sum(c.gasto_atual for c in caixinhas_list)
+            total_limite = sum(c.limite for c in caixinhas_list)
+            percentual_geral = (total_gasto / total_limite * 100) if total_limite > 0 else 0
+
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=(
+                    f"✅ Gráficos gerados com sucesso!\n\n"
+                    f"💰 **Resumo Geral:**\n"
+                    f"• Total gasto: R$ {total_gasto:.2f}\n"
+                    f"• Total limites: R$ {total_limite:.2f}\n"
+                    f"• Percentual usado: {percentual_geral:.1f}%\n"
+                )
+            )
+
+            # Deleta a mensagem de "aguarde"
+            await query.message.delete()
+
+        except Exception as e:
+            logger.error(f"Erro ao gerar gráficos: {e}")
+            await query.edit_message_text(
+                "❌ Erro ao gerar gráficos. Tente novamente mais tarde."
+            )
 
     # Ações - Recorrentes
     elif data == "action_criar_recorrente":
@@ -2436,13 +2524,59 @@ async def menu_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
         )
 
     elif data == "action_listar_recorrentes":
-        await query.message.delete()
-        fake_update = Update(
-            update_id=query.message.message_id,
-            message=query.message
+        # Chama diretamente a lógica de listar recorrentes
+        gastos = db.listar_gastos_recorrentes(user_id)
+
+        if not gastos:
+            await query.edit_message_text(
+                "🔄 **Você não tem gastos recorrentes cadastrados.**\n\n"
+                "Crie um com:\n"
+                "/criar_recorrente <descricao> | <valor> | <dia>\n\n"
+                "Exemplo:\n"
+                "/criar_recorrente Netflix | 45.90 | 15"
+            )
+            return
+
+        from datetime import datetime
+        mes_atual = datetime.now().month
+        ano_atual = datetime.now().year
+
+        total_mensal = db.calcular_total_recorrentes_mes(user_id)
+
+        msg = f"🔄 **Seus Gastos Recorrentes** (Total fixo: R$ {total_mensal:.2f}/mês)\n\n"
+
+        for g in gastos:
+            # Busca pagamento do mês atual
+            pagamento = db.obter_ou_criar_pagamento_mes(g.id, user_id)
+
+            # Define o valor a exibir
+            if g.valor_variavel:
+                if pagamento.valor:
+                    valor_texto = f"R$ {pagamento.valor:.2f} (definido)"
+                else:
+                    valor_texto = "VARIÁVEL (não definido)"
+            else:
+                valor_texto = f"R$ {g.valor_padrao:.2f}"
+
+            # Status de pagamento
+            status = "✅ PAGO" if pagamento.pago else "⏳ Pendente"
+
+            msg += (
+                f"📌 **{g.descricao}**\n"
+                f"   💰 {valor_texto}\n"
+                f"   📅 Dia {g.dia_vencimento}/{mes_atual:02d}\n"
+                f"   {status}\n"
+                f"   ID: {g.id}\n\n"
+            )
+
+        msg += (
+            f"💡 **Comandos:**\n"
+            f"/valor_recorrente <nome> <valor> - Definir valor variável\n"
+            f"/remover_recorrente <ID> - Remover recorrente\n"
+            f"Responda 'Pago' quando pagar uma conta"
         )
-        fake_update.effective_user = update.effective_user
-        await listar_recorrentes(fake_update, context)
+
+        await query.edit_message_text(msg)
 
     elif data == "action_definir_valor":
         await query.edit_message_text(
@@ -2466,20 +2600,50 @@ async def menu_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
     # Ações - Relatórios
     elif data == "action_relatorio_cartao":
         await query.message.delete()
-        fake_update = Update(
-            update_id=query.message.message_id,
-            message=query.message
+        await context.bot.send_message(
+            chat_id=user_id,
+            text="📊 Gerando relatório do cartão... aguarde!"
         )
-        fake_update.effective_user = update.effective_user
+
+        # Cria um objeto Update mínimo para chamar a função
+        class FakeMessage:
+            def __init__(self, chat_id):
+                self.chat_id = chat_id
+                self.message_id = 0
+
+            async def reply_text(self, text, **kwargs):
+                return await context.bot.send_message(chat_id=self.chat_id, text=text, **kwargs)
+
+        class FakeUpdate:
+            def __init__(self, user_id):
+                self.effective_user = type('obj', (object,), {'id': user_id})()
+                self.message = FakeMessage(user_id)
+
+        fake_update = FakeUpdate(user_id)
         await relatorio(fake_update, context)
 
     elif data == "action_relatorio_recorrentes":
         await query.message.delete()
-        fake_update = Update(
-            update_id=query.message.message_id,
-            message=query.message
+        await context.bot.send_message(
+            chat_id=user_id,
+            text="📊 Gerando relatório de recorrentes... aguarde!"
         )
-        fake_update.effective_user = update.effective_user
+
+        # Cria um objeto Update mínimo para chamar a função
+        class FakeMessage:
+            def __init__(self, chat_id):
+                self.chat_id = chat_id
+                self.message_id = 0
+
+            async def reply_text(self, text, **kwargs):
+                return await context.bot.send_message(chat_id=self.chat_id, text=text, **kwargs)
+
+        class FakeUpdate:
+            def __init__(self, user_id):
+                self.effective_user = type('obj', (object,), {'id': user_id})()
+                self.message = FakeMessage(user_id)
+
+        fake_update = FakeUpdate(user_id)
         await relatorio_recorrente(fake_update, context)
 
     elif data == "action_historico":
@@ -2494,11 +2658,22 @@ async def menu_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
     elif data == "action_previsoes":
         await query.message.delete()
-        fake_update = Update(
-            update_id=query.message.message_id,
-            message=query.message
-        )
-        fake_update.effective_user = update.effective_user
+
+        # Cria um objeto Update mínimo para chamar a função
+        class FakeMessage:
+            def __init__(self, chat_id):
+                self.chat_id = chat_id
+                self.message_id = 0
+
+            async def reply_text(self, text, **kwargs):
+                return await context.bot.send_message(chat_id=self.chat_id, text=text, **kwargs)
+
+        class FakeUpdate:
+            def __init__(self, user_id):
+                self.effective_user = type('obj', (object,), {'id': user_id})()
+                self.message = FakeMessage(user_id)
+
+        fake_update = FakeUpdate(user_id)
         await previsoes(fake_update, context)
 
     # Ações - Configurações
@@ -2514,11 +2689,22 @@ async def menu_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
     elif data == "action_resetar_mes":
         await query.message.delete()
-        fake_update = Update(
-            update_id=query.message.message_id,
-            message=query.message
-        )
-        fake_update.effective_user = update.effective_user
+
+        # Cria um objeto Update mínimo para chamar a função
+        class FakeMessage:
+            def __init__(self, chat_id):
+                self.chat_id = chat_id
+                self.message_id = 0
+
+            async def reply_text(self, text, **kwargs):
+                return await context.bot.send_message(chat_id=self.chat_id, text=text, **kwargs)
+
+        class FakeUpdate:
+            def __init__(self, user_id):
+                self.effective_user = type('obj', (object,), {'id': user_id})()
+                self.message = FakeMessage(user_id)
+
+        fake_update = FakeUpdate(user_id)
         await resetar_mes(fake_update, context)
 
 
