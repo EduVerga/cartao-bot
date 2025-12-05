@@ -754,7 +754,7 @@ async def historico_recorrente(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # Para cada gasto recorrente
     for gasto in gastos:
-        mensagem += f"📌 **{gasto.descricao}** ({gasto.caixinha.nome})\n"
+        mensagem += f"📌 **{gasto.descricao}**\n"
 
         total_gasto = 0
         meses_com_valor = 0
@@ -1090,8 +1090,7 @@ async def valor_recorrente(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"✅ **Valor definido para {descricao}!**\n\n"
             f"💰 R$ {valor:.2f}\n"
-            f"📅 Vencimento: Dia {gasto.dia_vencimento}/{mes_atual:02d}\n"
-            f"📦 Caixinha: {gasto.caixinha.nome}\n\n"
+            f"📅 Vencimento: Dia {gasto.dia_vencimento}/{mes_atual:02d}\n\n"
             f"Quando pagar, responda com: Pago"
         )
 
@@ -1167,7 +1166,6 @@ async def pagar_recorrente(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"✅ **{gasto.descricao}** marcado como pago!\n\n"
             f"💰 {valor_texto}\n"
-            f"📦 {gasto.caixinha.nome}\n"
             f"📅 Mês: {mes_atual:02d}/{ano_atual}"
         )
 
@@ -1265,13 +1263,17 @@ async def remover_recorrente(update: Update, context: ContextTypes.DEFAULT_TYPE)
             return
 
         descricao = gasto.descricao
-        valor = gasto.valor
 
         if db.deletar_gasto_recorrente(gasto_id):
+            if gasto.valor_variavel:
+                valor_texto = "Valor variável"
+            else:
+                valor_texto = f"R$ {gasto.valor_padrao:.2f}"
+
             await update.message.reply_text(
                 f"✅ **Gasto recorrente removido!**\n\n"
                 f"🔄 {descricao}\n"
-                f"💰 R$ {valor:.2f}"
+                f"💰 {valor_texto}"
             )
         else:
             await update.message.reply_text("❌ Erro ao remover gasto recorrente.")
@@ -2294,8 +2296,7 @@ async def processar_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 await update.message.reply_text(
                     f"✅ **{gasto.descricao}** marcado como pago!\n\n"
-                    f"💰 {valor_texto}\n"
-                    f"📦 {gasto.caixinha.nome}"
+                    f"💰 {valor_texto}"
                 )
 
                 del pending_transactions[trans_id]
@@ -2548,6 +2549,141 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Escolha uma opção abaixo:",
         reply_markup=reply_markup
     )
+
+
+async def backup_dados(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /backup - Gera e envia arquivo de backup via Telegram"""
+    user_id = update.effective_user.id
+
+    if not is_authorized(user_id):
+        await update.message.reply_text("🚫 Acesso não autorizado.")
+        return
+
+    await update.message.reply_text("🔄 Gerando backup... Aguarde.")
+
+    try:
+        import json
+        from datetime import datetime
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"backup_{timestamp}.json"
+
+        backup = {
+            'data_backup': datetime.now().isoformat(),
+            'caixinhas': [],
+            'transacoes': [],
+            'gastos_recorrentes': [],
+            'pagamentos_recorrentes': [],
+            'estabelecimentos': [],
+            'configuracoes': []
+        }
+
+        # Exporta caixinhas
+        from database import Caixinha, Transacao, GastoRecorrente, PagamentoRecorrente, EstabelecimentoConhecido, ConfiguracaoUsuario
+
+        caixinhas = db.session.query(Caixinha).filter_by(user_id=user_id).all()
+        for c in caixinhas:
+            backup['caixinhas'].append({
+                'id': c.id,
+                'user_id': c.user_id,
+                'nome': c.nome,
+                'limite': float(c.limite),
+                'gasto_atual': float(c.gasto_atual),
+                'criado_em': c.criado_em.isoformat() if c.criado_em else None
+            })
+
+        # Exporta transações
+        transacoes = db.session.query(Transacao).filter_by(user_id=user_id).all()
+        for t in transacoes:
+            backup['transacoes'].append({
+                'id': t.id,
+                'user_id': t.user_id,
+                'caixinha_id': t.caixinha_id,
+                'valor': float(t.valor),
+                'estabelecimento': t.estabelecimento,
+                'categoria': t.categoria,
+                'data_transacao': t.data_transacao.isoformat() if t.data_transacao else None,
+                'criado_em': t.criado_em.isoformat() if t.criado_em else None
+            })
+
+        # Exporta gastos recorrentes
+        gastos_rec = db.session.query(GastoRecorrente).filter_by(user_id=user_id).all()
+        for g in gastos_rec:
+            backup['gastos_recorrentes'].append({
+                'id': g.id,
+                'user_id': g.user_id,
+                'descricao': g.descricao,
+                'valor_padrao': float(g.valor_padrao) if g.valor_padrao else None,
+                'dia_vencimento': g.dia_vencimento,
+                'caixinha_id': g.caixinha_id,
+                'ativo': g.ativo,
+                'criado_em': g.criado_em.isoformat() if g.criado_em else None
+            })
+
+        # Exporta pagamentos recorrentes
+        pagamentos = db.session.query(PagamentoRecorrente).filter_by(user_id=user_id).all()
+        for p in pagamentos:
+            backup['pagamentos_recorrentes'].append({
+                'id': p.id,
+                'gasto_recorrente_id': p.gasto_recorrente_id,
+                'user_id': p.user_id,
+                'mes': p.mes,
+                'ano': p.ano,
+                'valor': float(p.valor) if p.valor else None,
+                'pago': p.pago,
+                'data_pagamento': p.data_pagamento.isoformat() if p.data_pagamento else None,
+                'ultimo_lembrete': p.ultimo_lembrete.isoformat() if p.ultimo_lembrete else None
+            })
+
+        # Exporta estabelecimentos conhecidos
+        estabelecimentos = db.session.query(EstabelecimentoConhecido).filter_by(user_id=user_id).all()
+        for e in estabelecimentos:
+            backup['estabelecimentos'].append({
+                'id': e.id,
+                'user_id': e.user_id,
+                'nome_estabelecimento': e.nome_estabelecimento,
+                'caixinha_id': e.caixinha_id
+            })
+
+        # Exporta configurações
+        config = db.session.query(ConfiguracaoUsuario).filter_by(user_id=user_id).first()
+        if config:
+            backup['configuracoes'].append({
+                'user_id': config.user_id,
+                'dia_fechamento': config.dia_fechamento
+            })
+
+        # Salva em arquivo JSON
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(backup, f, indent=2, ensure_ascii=False)
+
+        # Monta mensagem de resumo
+        msg = "✅ **Backup gerado com sucesso!**\n\n"
+        msg += f"📊 **Estatísticas:**\n"
+        msg += f"   📦 Caixinhas: {len(backup['caixinhas'])}\n"
+        msg += f"   💳 Transações: {len(backup['transacoes'])}\n"
+        msg += f"   🔄 Gastos Recorrentes: {len(backup['gastos_recorrentes'])}\n"
+        msg += f"   💰 Pagamentos: {len(backup['pagamentos_recorrentes'])}\n"
+        msg += f"   🏪 Estabelecimentos: {len(backup['estabelecimentos'])}\n\n"
+        msg += f"⚠️ **IMPORTANTE:** Salve este arquivo em local seguro!"
+
+        # Envia o arquivo
+        with open(filename, 'rb') as f:
+            await update.message.reply_document(
+                document=f,
+                filename=filename,
+                caption=msg
+            )
+
+        # Remove o arquivo temporário
+        import os
+        os.remove(filename)
+
+    except Exception as e:
+        logger.error(f"Erro ao gerar backup: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        await update.message.reply_text("❌ Erro ao gerar backup. Tente novamente.")
 
 
 async def menu_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3411,6 +3547,7 @@ def main():
     application.add_handler(CommandHandler("historico_recorrente", historico_recorrente))
     application.add_handler(CommandHandler("remover_recorrente", remover_recorrente))
     application.add_handler(CommandHandler("resetar_tudo", resetar_tudo))
+    application.add_handler(CommandHandler("backup", backup_dados))
     application.add_handler(MessageHandler(filters.PHOTO, processar_imagem))
     application.add_handler(MessageHandler(filters.VOICE, processar_audio))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, processar_texto))
