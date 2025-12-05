@@ -2037,6 +2037,69 @@ async def processar_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Valor inválido. Digite apenas números (ex: 1000):")
             return
 
+    # Estado: Aguardando novo limite de caixinha
+    if context.user_data.get('estado') == 'aguardando_novo_limite':
+        try:
+            novo_limite = float(texto.replace(',', '.'))
+            if novo_limite <= 0:
+                await update.message.reply_text("❌ O limite deve ser maior que zero. Tente novamente:")
+                return
+
+            caixinha_id = context.user_data.get('caixinha_id')
+            caixinha = db.buscar_caixinha_por_id(caixinha_id)
+
+            if not caixinha:
+                await update.message.reply_text("❌ Caixinha não encontrada.")
+                context.user_data.clear()
+                return
+
+            limite_antigo = caixinha.limite
+
+            # Edita o limite
+            db.editar_limite_caixinha(caixinha_id, novo_limite)
+
+            await update.message.reply_text(
+                f"✅ **Limite atualizado!**\n\n"
+                f"📦 {caixinha.nome}\n"
+                f"💰 Limite anterior: R$ {limite_antigo:.2f}\n"
+                f"💰 Novo limite: R$ {novo_limite:.2f}\n\n"
+                f"Use /menu para voltar ao menu principal."
+            )
+
+            # Limpa o estado
+            context.user_data.clear()
+            return
+
+        except ValueError:
+            await update.message.reply_text("❌ Valor inválido. Digite apenas números (ex: 1500):")
+            return
+
+    # Estado: Aguardando novo nome de caixinha
+    if context.user_data.get('estado') == 'aguardando_novo_nome':
+        caixinha_id = context.user_data.get('caixinha_id')
+        caixinha = db.buscar_caixinha_por_id(caixinha_id)
+
+        if not caixinha:
+            await update.message.reply_text("❌ Caixinha não encontrada.")
+            context.user_data.clear()
+            return
+
+        nome_antigo = caixinha.nome
+
+        # Renomeia a caixinha
+        db.renomear_caixinha(caixinha_id, texto)
+
+        await update.message.reply_text(
+            f"✅ **Caixinha renomeada!**\n\n"
+            f"📦 Nome anterior: **{nome_antigo}**\n"
+            f"📦 Novo nome: **{texto}**\n\n"
+            f"Use /menu para voltar ao menu principal."
+        )
+
+        # Limpa o estado
+        context.user_data.clear()
+        return
+
     # Estado: Aguardando nome do gasto recorrente
     if context.user_data.get('estado') == 'aguardando_nome_recorrente':
         context.user_data['nome_recorrente'] = texto
@@ -2108,6 +2171,33 @@ async def processar_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         except ValueError:
             await update.message.reply_text("❌ Valor inválido. Digite apenas números (ex: 45.90):")
+            return
+
+    # Estado: Aguardando dia de fechamento
+    if context.user_data.get('estado') == 'aguardando_dia_fechamento':
+        try:
+            dia = int(texto)
+            if dia < 1 or dia > 28:
+                await update.message.reply_text("❌ O dia deve estar entre 1 e 28. Tente novamente:")
+                return
+
+            # Define o fechamento
+            db.definir_fechamento(user_id, dia)
+
+            await update.message.reply_text(
+                f"✅ **Dia de fechamento definido!**\n\n"
+                f"📅 Seu fechamento será todo dia **{dia}** de cada mês.\n\n"
+                f"🔄 O relatório automático será enviado neste dia às 22h.\n"
+                f"🔄 Os gastos serão resetados no dia seguinte às 00:10.\n\n"
+                f"Use /menu para voltar ao menu principal."
+            )
+
+            # Limpa o estado
+            context.user_data.clear()
+            return
+
+        except ValueError:
+            await update.message.reply_text("❌ Digite apenas o número do dia (1-28):")
             return
 
     # Estado: Aguardando valor para gasto variável
@@ -2441,7 +2531,10 @@ async def menu_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
         keyboard = [
             [InlineKeyboardButton("➕ Criar Nova Caixinha", callback_data="action_criar_caixinha")],
             [InlineKeyboardButton("📋 Ver Todas as Caixinhas", callback_data="action_listar_caixinhas")],
-            [InlineKeyboardButton("📊 Gráficos das Caixinhas", callback_data="action_graficos")],
+            [InlineKeyboardButton("✏️ Editar Limite", callback_data="action_editar_limite")],
+            [InlineKeyboardButton("🏷️ Renomear Caixinha", callback_data="action_renomear_caixinha")],
+            [InlineKeyboardButton("🗑️ Deletar Caixinha", callback_data="action_deletar_caixinha")],
+            [InlineKeyboardButton("📊 Gráficos", callback_data="action_graficos")],
             [InlineKeyboardButton("🔙 Voltar", callback_data="menu_principal")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -2458,6 +2551,7 @@ async def menu_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
             [InlineKeyboardButton("📋 Ver Gastos Recorrentes", callback_data="action_listar_recorrentes")],
             [InlineKeyboardButton("💰 Definir Valor do Mês", callback_data="action_definir_valor")],
             [InlineKeyboardButton("✅ Marcar Como Pago", callback_data="action_pagar_recorrente")],
+            [InlineKeyboardButton("🗑️ Remover Recorrente", callback_data="action_remover_recorrente")],
             [InlineKeyboardButton("🔙 Voltar", callback_data="menu_principal")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -2657,6 +2751,163 @@ async def menu_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
                 "❌ Erro ao gerar gráficos. Tente novamente mais tarde."
             )
 
+    elif data == "action_editar_limite":
+        # Lista caixinhas para escolher qual editar
+        caixinhas_list = db.listar_caixinhas(user_id)
+
+        if not caixinhas_list:
+            await query.edit_message_text(
+                "📦 Você ainda não tem caixinhas cadastradas!\n\n"
+                "Crie uma primeiro."
+            )
+            return
+
+        msg = "✏️ **Editar Limite**\n\n"
+        msg += "Escolha qual caixinha você quer editar:\n\n"
+
+        keyboard = []
+        for c in caixinhas_list:
+            keyboard.append([InlineKeyboardButton(
+                f"{c.nome} (R$ {c.limite:.2f})",
+                callback_data=f"editlim_{c.id}"
+            )])
+
+        keyboard.append([InlineKeyboardButton("🔙 Voltar", callback_data="menu_caixinhas")])
+
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data.startswith("editlim_"):
+        # Usuário selecionou uma caixinha para editar limite
+        caixinha_id = int(data.split("_")[1])
+        caixinha = db.buscar_caixinha_por_id(caixinha_id)
+
+        if not caixinha:
+            await query.edit_message_text("❌ Caixinha não encontrada.")
+            return
+
+        context.user_data['estado'] = 'aguardando_novo_limite'
+        context.user_data['caixinha_id'] = caixinha_id
+
+        await query.edit_message_text(
+            f"✏️ **{caixinha.nome}**\n\n"
+            f"Limite atual: R$ {caixinha.limite:.2f}\n\n"
+            f"Digite o novo limite:\n\n"
+            f"Exemplo: 1500"
+        )
+
+    elif data == "action_renomear_caixinha":
+        # Lista caixinhas para escolher qual renomear
+        caixinhas_list = db.listar_caixinhas(user_id)
+
+        if not caixinhas_list:
+            await query.edit_message_text(
+                "📦 Você ainda não tem caixinhas cadastradas!\n\n"
+                "Crie uma primeiro."
+            )
+            return
+
+        msg = "🏷️ **Renomear Caixinha**\n\n"
+        msg += "Escolha qual caixinha você quer renomear:\n\n"
+
+        keyboard = []
+        for c in caixinhas_list:
+            keyboard.append([InlineKeyboardButton(
+                f"{c.nome}",
+                callback_data=f"rename_{c.id}"
+            )])
+
+        keyboard.append([InlineKeyboardButton("🔙 Voltar", callback_data="menu_caixinhas")])
+
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data.startswith("rename_"):
+        # Usuário selecionou uma caixinha para renomear
+        caixinha_id = int(data.split("_")[1])
+        caixinha = db.buscar_caixinha_por_id(caixinha_id)
+
+        if not caixinha:
+            await query.edit_message_text("❌ Caixinha não encontrada.")
+            return
+
+        context.user_data['estado'] = 'aguardando_novo_nome'
+        context.user_data['caixinha_id'] = caixinha_id
+
+        await query.edit_message_text(
+            f"🏷️ **Renomear: {caixinha.nome}**\n\n"
+            f"Digite o novo nome:\n\n"
+            f"Exemplo: Supermercado, Delivery, etc."
+        )
+
+    elif data == "action_deletar_caixinha":
+        # Lista caixinhas para escolher qual deletar
+        caixinhas_list = db.listar_caixinhas(user_id)
+
+        if not caixinhas_list:
+            await query.edit_message_text(
+                "📦 Você ainda não tem caixinhas cadastradas!\n\n"
+                "Não há nada para deletar."
+            )
+            return
+
+        msg = "🗑️ **Deletar Caixinha**\n\n"
+        msg += "⚠️ **ATENÇÃO:** Esta ação não pode ser desfeita!\n\n"
+        msg += "Escolha qual caixinha você quer deletar:\n\n"
+
+        keyboard = []
+        for c in caixinhas_list:
+            keyboard.append([InlineKeyboardButton(
+                f"🗑️ {c.nome} (R$ {c.gasto_atual:.2f} gastos)",
+                callback_data=f"delcaixa_{c.id}"
+            )])
+
+        keyboard.append([InlineKeyboardButton("🔙 Voltar", callback_data="menu_caixinhas")])
+
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data.startswith("delcaixa_"):
+        # Usuário selecionou uma caixinha para deletar - pede confirmação
+        caixinha_id = int(data.split("_")[1])
+        caixinha = db.buscar_caixinha_por_id(caixinha_id)
+
+        if not caixinha:
+            await query.edit_message_text("❌ Caixinha não encontrada.")
+            return
+
+        keyboard = [
+            [InlineKeyboardButton("✅ Sim, deletar", callback_data=f"confirmdel_{caixinha_id}")],
+            [InlineKeyboardButton("❌ Cancelar", callback_data="menu_caixinhas")]
+        ]
+
+        await query.edit_message_text(
+            f"🗑️ **Confirmar Exclusão**\n\n"
+            f"Tem certeza que deseja deletar a caixinha?\n\n"
+            f"📦 **{caixinha.nome}**\n"
+            f"💰 Gasto atual: R$ {caixinha.gasto_atual:.2f}\n"
+            f"🎯 Limite: R$ {caixinha.limite:.2f}\n\n"
+            f"⚠️ Todos os gastos associados também serão removidos!",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+    elif data.startswith("confirmdel_"):
+        # Confirmação de exclusão
+        caixinha_id = int(data.split("_")[1])
+        caixinha = db.buscar_caixinha_por_id(caixinha_id)
+
+        if not caixinha:
+            await query.edit_message_text("❌ Caixinha não encontrada.")
+            return
+
+        nome = caixinha.nome
+
+        # Deleta a caixinha
+        db.deletar_caixinha(caixinha_id)
+
+        await query.edit_message_text(
+            f"✅ **Caixinha Deletada!**\n\n"
+            f"📦 **{nome}** foi removida com sucesso.\n\n"
+            f"Use /menu para voltar ao menu principal."
+        )
+
     # Ações - Recorrentes
     elif data == "action_criar_recorrente":
         # Inicia o fluxo de criação de gasto recorrente
@@ -2831,6 +3082,78 @@ async def menu_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             await query.edit_message_text("❌ Erro ao marcar como pago.")
 
+    elif data == "action_remover_recorrente":
+        # Lista gastos recorrentes para escolher qual remover
+        gastos = db.listar_gastos_recorrentes(user_id)
+
+        if not gastos:
+            await query.edit_message_text(
+                "🔄 Você não tem gastos recorrentes cadastrados!\n\n"
+                "Não há nada para remover."
+            )
+            return
+
+        msg = "🗑️ **Remover Gasto Recorrente**\n\n"
+        msg += "Escolha qual gasto você quer remover:\n\n"
+
+        keyboard = []
+        for g in gastos:
+            valor_texto = f"R$ {g.valor_padrao:.2f}" if not g.valor_variavel else "Variável"
+            keyboard.append([InlineKeyboardButton(
+                f"🗑️ {g.descricao} ({valor_texto})",
+                callback_data=f"delrec_{g.id}"
+            )])
+
+        keyboard.append([InlineKeyboardButton("🔙 Voltar", callback_data="menu_recorrentes")])
+
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data.startswith("delrec_"):
+        # Usuário selecionou um gasto recorrente para remover - pede confirmação
+        gasto_id = int(data.split("_")[1])
+        gasto = db.buscar_gasto_recorrente_por_id(gasto_id)
+
+        if not gasto:
+            await query.edit_message_text("❌ Gasto não encontrado.")
+            return
+
+        keyboard = [
+            [InlineKeyboardButton("✅ Sim, remover", callback_data=f"confirmdelrec_{gasto_id}")],
+            [InlineKeyboardButton("❌ Cancelar", callback_data="menu_recorrentes")]
+        ]
+
+        valor_texto = f"R$ {gasto.valor_padrao:.2f}" if not gasto.valor_variavel else "Valor variável"
+
+        await query.edit_message_text(
+            f"🗑️ **Confirmar Remoção**\n\n"
+            f"Tem certeza que deseja remover este gasto recorrente?\n\n"
+            f"🔄 **{gasto.descricao}**\n"
+            f"💰 {valor_texto}\n"
+            f"📅 Vence dia {gasto.dia_vencimento}\n\n"
+            f"⚠️ Histórico de pagamentos também será removido!",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+    elif data.startswith("confirmdelrec_"):
+        # Confirmação de remoção
+        gasto_id = int(data.split("_")[1])
+        gasto = db.buscar_gasto_recorrente_por_id(gasto_id)
+
+        if not gasto:
+            await query.edit_message_text("❌ Gasto não encontrado.")
+            return
+
+        descricao = gasto.descricao
+
+        # Desativa o gasto recorrente
+        db.desativar_gasto_recorrente(gasto_id)
+
+        await query.edit_message_text(
+            f"✅ **Gasto Recorrente Removido!**\n\n"
+            f"🔄 **{descricao}** foi removido com sucesso.\n\n"
+            f"Use /menu para voltar ao menu principal."
+        )
+
     # Callbacks para criação de recorrente - escolha de tipo
     elif data == "rec_tipo_fixo":
         context.user_data['estado'] = 'aguardando_valor_fixo_digitado'
@@ -2945,14 +3268,21 @@ async def menu_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
     # Ações - Configurações
     elif data == "action_definir_fechamento":
-        await query.edit_message_text(
-            "📅 **Definir Dia de Fechamento**\n\n"
-            "Use o comando:\n"
-            "/fechamento <dia>\n\n"
-            "Exemplo:\n"
-            "/fechamento 10\n"
-            "(dia 10 de cada mês)"
-        )
+        # Inicia fluxo de definir fechamento
+        context.user_data['estado'] = 'aguardando_dia_fechamento'
+
+        # Busca fechamento atual
+        config = db.buscar_configuracao_usuario(user_id)
+        fechamento_atual = config.dia_fechamento if config else None
+
+        msg = "📅 **Definir Dia de Fechamento**\n\n"
+        if fechamento_atual:
+            msg += f"Fechamento atual: Dia **{fechamento_atual}** de cada mês\n\n"
+
+        msg += "Digite o novo dia de fechamento (1-28):\n\n"
+        msg += "Exemplo: 10"
+
+        await query.edit_message_text(msg)
 
     elif data == "action_resetar_mes":
         await query.message.delete()
@@ -3031,7 +3361,7 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, processar_texto))
 
     # Callback handlers - ordem importa! Específicos antes dos genéricos
-    application.add_handler(CallbackQueryHandler(menu_callback_handler, pattern="^(menu_|action_|defvalor_|pagar_|rec_tipo_)"))
+    application.add_handler(CallbackQueryHandler(menu_callback_handler, pattern="^(menu_|action_|defvalor_|pagar_|rec_tipo_|editlim_|rename_|delcaixa_|confirmdel_|delrec_|confirmdelrec_)"))
     application.add_handler(CallbackQueryHandler(callback_handler))
 
     # Scheduler V3 - Reset automático baseado no dia de fechamento
