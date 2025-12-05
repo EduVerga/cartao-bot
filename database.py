@@ -249,6 +249,10 @@ class Database:
         self.session.commit()
         return config
 
+    def buscar_configuracao_usuario(self, user_id: int):
+        """Busca a configuração do usuário"""
+        return self.session.query(ConfiguracaoUsuario).filter_by(user_id=user_id).first()
+
     def obter_dia_fechamento(self, user_id: int):
         """Obtém o dia de fechamento configurado"""
         config = self.session.query(ConfiguracaoUsuario).filter_by(user_id=user_id).first()

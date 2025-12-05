@@ -2320,6 +2320,43 @@ async def processar_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await processar_gasto_texto(update, context, texto)
 
 
+async def resetar_mes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Reseta os gastos do mês manualmente"""
+    user_id = update.effective_user.id
+
+    if not is_authorized(user_id):
+        await update.message.reply_text("🚫 Acesso não autorizado.")
+        return
+
+    # Mostra os gastos atuais antes do reset
+    caixinhas = db.listar_caixinhas(user_id)
+
+    if not caixinhas:
+        await update.message.reply_text("❌ Você não tem caixinhas criadas!")
+        return
+
+    msg_antes = "📊 **Gastos ANTES do reset:**\n\n"
+    for c in caixinhas:
+        msg_antes += f"📦 {c.nome}: R$ {c.gasto_atual:.2f} / R$ {c.limite:.2f}\n"
+
+    await update.message.reply_text(msg_antes)
+
+    # Executa o reset
+    num_resetadas = db.resetar_gastos_mensais(user_id)
+
+    msg_depois = f"\n✅ **Reset concluído!**\n\n"
+    msg_depois += f"🔄 {num_resetadas} caixinha(s) resetada(s).\n\n"
+    msg_depois += "📊 **Gastos DEPOIS do reset:**\n\n"
+
+    caixinhas = db.listar_caixinhas(user_id)
+    for c in caixinhas:
+        msg_depois += f"📦 {c.nome}: R$ {c.gasto_atual:.2f} / R$ {c.limite:.2f}\n"
+
+    msg_depois += "\n💡 Os limites foram mantidos, apenas os gastos foram zerados."
+
+    await update.message.reply_text(msg_depois)
+
+
 async def testar_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando /testar_reset para simular reset automático"""
     user_id = update.effective_user.id
@@ -3353,6 +3390,7 @@ def main():
     application.add_handler(CommandHandler("criar", criar_caixinha))
     application.add_handler(CommandHandler("fechamento", definir_fechamento))
     application.add_handler(CommandHandler("testar_reset", testar_reset))
+    application.add_handler(CommandHandler("resetar_mes", resetar_mes))
     application.add_handler(CommandHandler("testar_relatorio", testar_relatorio_fechamento))
     application.add_handler(CommandHandler("caixinhas", listar_caixinhas))
     application.add_handler(CommandHandler("editar_limite", editar_limite))
