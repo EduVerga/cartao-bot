@@ -127,13 +127,13 @@ Envie uma foto do comprovante do cartão de crédito e eu vou:
   Exemplo: /fechamento 20
   Use /fechamento sem número para ver o dia configurado
 
-📊 **Relatórios:**
-/recentes - Ver últimas 10 transações
-/historico <meses> - Histórico consolidado
+📊 **Relatórios do Cartão:**
+/recentes - Ver últimas 10 transações do cartão
+/historico <meses> - Histórico consolidado do cartão
   Exemplo: /historico 12 (últimos 12 meses)
   Opções: 6, 12, 18 ou 24 meses
-/relatorio - Relatório do mês atual
-/grafico - Gerar gráficos visuais dos seus gastos
+/relatorio - Relatório do cartão de crédito do mês
+/grafico - Gráficos visuais dos gastos do cartão
 
 🔔 **Alertas e Previsões:**
 /alertas - Verificar alertas de todas as caixinhas
@@ -141,13 +141,14 @@ Envie uma foto do comprovante do cartão de crédito e eu vou:
 /dicas <nome> - Dicas personalizadas de economia
   Exemplo: /dicas Mercado
 
-🔄 **Gastos Recorrentes:**
+🔄 **Gastos Recorrentes (Contas Fixas):**
 /criar_recorrente <desc> | <caixinha> | <dia> - Criar recorrente
   Valor fixo: /criar_recorrente Netflix | Streaming | 45.90 | 15
   Valor variável: /criar_recorrente Condominio | Moradia | 10
 /valor_recorrente <nome> <valor> - Definir valor do mês
   Exemplo: /valor_recorrente Condominio 650
 /recorrentes - Ver todos os gastos recorrentes e status
+/relatorio_recorrente - Relatório mensal de contas fixas
 /remover_recorrente <ID> - Remover um gasto recorrente
 💡 Responda "Pago" quando pagar uma conta
 
@@ -563,7 +564,7 @@ async def historico_consolidado(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def relatorio(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Comando /relatorio - Relatório do mês atual"""
+    """Comando /relatorio - Relatório do cartão de crédito do mês atual"""
     user_id = update.effective_user.id
 
     if not is_authorized(user_id):
@@ -575,7 +576,7 @@ async def relatorio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mes_nome = hoje.strftime("%B/%Y")
 
     mensagem = f"""
-📊 **Relatório Mensal - {mes_nome}**
+💳 **Relatório do Cartão de Crédito - {mes_nome}**
 
 {'='*40}
 
@@ -599,12 +600,113 @@ async def relatorio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mensagem += f"""
 {'='*40}
 
-💵 **Totais do Mês:**
+💵 **Totais do Cartão:**
 • Total gasto: R$ {rel['total_gasto']:.2f}
 • Total de limites: R$ {rel['total_limite']:.2f}
 • Total disponível: R$ {rel['total_disponivel']:.2f}
 • Número de transações: {rel['num_transacoes']}
+
+💡 Para ver gastos recorrentes (contas fixas):
+   /relatorio_recorrente
 """
+
+    await update.message.reply_text(mensagem)
+
+
+async def relatorio_recorrente(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /relatorio_recorrente - Relatório de gastos recorrentes do mês"""
+    user_id = update.effective_user.id
+
+    if not is_authorized(user_id):
+        await update.message.reply_text("🚫 Acesso não autorizado.")
+        return
+
+    from datetime import datetime
+    hoje = datetime.now()
+    mes_atual = hoje.month
+    ano_atual = hoje.year
+    mes_nome = hoje.strftime("%B/%Y")
+
+    gastos = db.listar_gastos_recorrentes(user_id, apenas_ativos=True)
+
+    if not gastos:
+        await update.message.reply_text(
+            "🔄 Você não tem gastos recorrentes cadastrados.\n\n"
+            "Use /criar_recorrente para cadastrar contas fixas."
+        )
+        return
+
+    mensagem = f"🔄 **Relatório de Gastos Recorrentes - {mes_nome}**\n\n"
+    mensagem += f"{'='*40}\n\n"
+
+    total_pago = 0
+    total_pendente = 0
+    total_sem_valor = 0
+    num_pagos = 0
+    num_pendentes = 0
+
+    mensagem += "📋 **Status dos Pagamentos:**\n\n"
+
+    for g in gastos:
+        pagamento = db.obter_ou_criar_pagamento_mes(g.id, user_id, mes_atual, ano_atual)
+
+        # Define valor e status
+        if g.valor_variavel:
+            if pagamento.valor:
+                valor = pagamento.valor
+                valor_texto = f"R$ {valor:.2f}"
+            else:
+                valor = 0
+                valor_texto = "⚠️ Não definido"
+                total_sem_valor += 1
+        else:
+            valor = g.valor_padrao
+            valor_texto = f"R$ {valor:.2f}"
+
+        # Status de pagamento
+        if pagamento.pago:
+            status_emoji = "✅"
+            status_texto = "PAGO"
+            total_pago += valor
+            num_pagos += 1
+        else:
+            status_emoji = "⏳"
+            status_texto = "Pendente"
+            if valor > 0:
+                total_pendente += valor
+            num_pendentes += 1
+
+        # Calcula dias até vencimento
+        from lembretes_recorrentes import LembretesRecorrentes
+        lembretes = LembretesRecorrentes(db)
+        dias_ate = lembretes.calcular_dias_ate_vencimento(g.dia_vencimento)
+
+        if dias_ate == 0:
+            dias_texto = "🔴 VENCE HOJE"
+        elif dias_ate < 0:
+            dias_texto = f"🔴 Venceu há {abs(dias_ate)} dias"
+        elif dias_ate <= 3:
+            dias_texto = f"⚠️ {dias_ate} dias"
+        else:
+            dias_texto = f"{dias_ate} dias"
+
+        mensagem += (
+            f"{status_emoji} **{g.descricao}**\n"
+            f"   💰 {valor_texto}\n"
+            f"   📦 {g.caixinha.nome}\n"
+            f"   📅 Dia {g.dia_vencimento}/{mes_atual:02d} ({dias_texto})\n"
+            f"   {status_texto}\n\n"
+        )
+
+    mensagem += f"{'='*40}\n\n"
+    mensagem += "💵 **Totais do Mês:**\n"
+    mensagem += f"✅ Já pago: R$ {total_pago:.2f} ({num_pagos} conta(s))\n"
+    mensagem += f"⏳ Pendente: R$ {total_pendente:.2f} ({num_pendentes} conta(s))\n"
+    mensagem += f"📊 Total: R$ {total_pago + total_pendente:.2f}\n"
+
+    if total_sem_valor > 0:
+        mensagem += f"\n⚠️ {total_sem_valor} conta(s) sem valor definido\n"
+        mensagem += "Use /valor_recorrente <nome> <valor>"
 
     await update.message.reply_text(mensagem)
 
@@ -2032,6 +2134,7 @@ def main():
     application.add_handler(CommandHandler("recentes", recentes))
     application.add_handler(CommandHandler("historico", historico_consolidado))
     application.add_handler(CommandHandler("relatorio", relatorio))
+    application.add_handler(CommandHandler("relatorio_recorrente", relatorio_recorrente))
     application.add_handler(CommandHandler("grafico", grafico))
     application.add_handler(CommandHandler("alertas", alertas))
     application.add_handler(CommandHandler("previsoes", previsoes))
