@@ -142,10 +142,14 @@ Envie uma foto do comprovante do cartão de crédito e eu vou:
   Exemplo: /dicas Mercado
 
 🔄 **Gastos Recorrentes:**
-/criar_recorrente <desc> | <caixinha> | <valor> | <dia>
-  Exemplo: /criar_recorrente Netflix | Streaming | 45.90 | 15
-/recorrentes - Ver todos os gastos recorrentes
+/criar_recorrente <desc> | <caixinha> | <dia> - Criar recorrente
+  Valor fixo: /criar_recorrente Netflix | Streaming | 45.90 | 15
+  Valor variável: /criar_recorrente Condominio | Moradia | 10
+/valor_recorrente <nome> <valor> - Definir valor do mês
+  Exemplo: /valor_recorrente Condominio 650
+/recorrentes - Ver todos os gastos recorrentes e status
 /remover_recorrente <ID> - Remover um gasto recorrente
+💡 Responda "Pago" quando pagar uma conta
 
 🔧 **Outros:**
 /resetar_tudo CONFIRMO - Apagar TODOS os seus dados
@@ -760,18 +764,24 @@ async def dicas(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def criar_recorrente(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Comando /criar_recorrente <descricao> | <caixinha> | <valor> | <dia>"""
+    """Comando /criar_recorrente <descricao> | <caixinha> | <dia>
+    OU /criar_recorrente <descricao> | <caixinha> | <valor fixo> | <dia>"""
     user_id = update.effective_user.id
 
     if not is_authorized(user_id):
         await update.message.reply_text("🚫 Acesso não autorizado.")
         return
 
-    if len(context.args) < 4:
+    if len(context.args) < 3:
         await update.message.reply_text(
-            "❌ Uso correto: /criar_recorrente <descricao> | <caixinha> | <valor> | <dia>\n\n"
-            "Exemplo: /criar_recorrente Netflix | Streaming | 45.90 | 15\n"
-            "Isso cria um gasto recorrente de R$ 45,90 todo dia 15"
+            "❌ Uso correto:\n\n"
+            "**Valor fixo:**\n"
+            "/criar_recorrente <desc> | <caixinha> | <valor> | <dia>\n"
+            "Exemplo: /criar_recorrente Netflix | Streaming | 45.90 | 15\n\n"
+            "**Valor variável:**\n"
+            "/criar_recorrente <desc> | <caixinha> | <dia>\n"
+            "Exemplo: /criar_recorrente Condominio | Moradia | 10\n"
+            "(Use /valor_recorrente para definir o valor de cada mês)"
         )
         return
 
@@ -780,21 +790,29 @@ async def criar_recorrente(update: Update, context: ContextTypes.DEFAULT_TYPE):
         texto_completo = ' '.join(context.args)
         partes = [p.strip() for p in texto_completo.split('|')]
 
-        if len(partes) != 4:
+        if len(partes) not in [3, 4]:
             await update.message.reply_text(
                 "❌ Use | para separar os campos!\n\n"
-                "Exemplo: /criar_recorrente Netflix | Streaming | 45.90 | 15"
+                "3 campos = valor variável\n"
+                "4 campos = valor fixo"
             )
             return
 
         descricao = partes[0]
         nome_caixinha = partes[1]
-        valor = float(partes[2])
-        dia = int(partes[3])
 
-        if valor <= 0:
-            await update.message.reply_text("❌ O valor deve ser maior que zero!")
-            return
+        # Se tem 4 partes, o valor é fixo
+        if len(partes) == 4:
+            valor_padrao = float(partes[2])
+            dia = int(partes[3])
+
+            if valor_padrao <= 0:
+                await update.message.reply_text("❌ O valor deve ser maior que zero!")
+                return
+        else:
+            # Se tem 3 partes, o valor é variável
+            valor_padrao = None
+            dia = int(partes[2])
 
         if dia < 1 or dia > 28:
             await update.message.reply_text("❌ O dia deve ser entre 1 e 28!")
@@ -814,24 +832,89 @@ async def criar_recorrente(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_id=user_id,
             caixinha_id=caixinha.id,
             descricao=descricao,
-            valor=valor,
-            dia_vencimento=dia
+            dia_vencimento=dia,
+            valor_padrao=valor_padrao
         )
 
-        await update.message.reply_text(
-            f"✅ **Gasto recorrente criado!**\n\n"
-            f"🔄 {gasto.descricao}\n"
-            f"💰 R$ {gasto.valor:.2f}\n"
-            f"📦 Caixinha: {caixinha.nome}\n"
-            f"📅 Vencimento: Todo dia {gasto.dia_vencimento}\n\n"
-            f"Use /recorrentes para ver todos os seus gastos recorrentes."
-        )
+        if gasto.valor_variavel:
+            await update.message.reply_text(
+                f"✅ **Gasto recorrente criado!**\n\n"
+                f"🔄 {gasto.descricao}\n"
+                f"💰 Valor VARIÁVEL (defina a cada mês)\n"
+                f"📦 Caixinha: {caixinha.nome}\n"
+                f"📅 Vencimento: Todo dia {gasto.dia_vencimento}\n\n"
+                f"Use /valor_recorrente {gasto.descricao} <valor> para definir o valor do mês."
+            )
+        else:
+            await update.message.reply_text(
+                f"✅ **Gasto recorrente criado!**\n\n"
+                f"🔄 {gasto.descricao}\n"
+                f"💰 R$ {gasto.valor_padrao:.2f}\n"
+                f"📦 Caixinha: {caixinha.nome}\n"
+                f"📅 Vencimento: Todo dia {gasto.dia_vencimento}\n\n"
+                f"Use /recorrentes para ver todos os seus gastos recorrentes."
+            )
 
     except ValueError:
         await update.message.reply_text("❌ Valor ou dia inválidos! Use números válidos.")
     except Exception as e:
         logger.error(f"Erro ao criar gasto recorrente: {e}")
         await update.message.reply_text("❌ Erro ao criar gasto recorrente. Tente novamente.")
+
+
+async def valor_recorrente(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /valor_recorrente <descricao> <valor>"""
+    user_id = update.effective_user.id
+
+    if not is_authorized(user_id):
+        await update.message.reply_text("🚫 Acesso não autorizado.")
+        return
+
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "❌ Uso correto: /valor_recorrente <descricao> <valor>\n\n"
+            "Exemplo: /valor_recorrente Condominio 650"
+        )
+        return
+
+    try:
+        # Último arg é o valor, o resto é a descrição
+        valor = float(context.args[-1])
+        descricao = ' '.join(context.args[:-1])
+
+        if valor <= 0:
+            await update.message.reply_text("❌ O valor deve ser maior que zero!")
+            return
+
+        # Busca gasto recorrente
+        gasto = db.buscar_gasto_recorrente_por_descricao(user_id, descricao)
+        if not gasto:
+            await update.message.reply_text(
+                f"❌ Gasto recorrente '{descricao}' não encontrado.\n\n"
+                f"Use /recorrentes para ver seus gastos recorrentes."
+            )
+            return
+
+        # Define valor para o mês atual
+        from datetime import datetime
+        mes_atual = datetime.now().month
+        ano_atual = datetime.now().year
+
+        pagamento = db.definir_valor_recorrente_mes(gasto.id, user_id, valor)
+
+        await update.message.reply_text(
+            f"✅ **Valor definido para {descricao}!**\n\n"
+            f"💰 R$ {valor:.2f}\n"
+            f"📅 Vencimento: Dia {gasto.dia_vencimento}/{mes_atual:02d}\n"
+            f"📦 Caixinha: {gasto.caixinha.nome}\n\n"
+            f"Quando pagar, responda com: Pago"
+        )
+
+    except ValueError:
+        await update.message.reply_text("❌ Valor inválido! Use um número válido.")
+    except Exception as e:
+        logger.error(f"Erro ao definir valor recorrente: {e}")
+        await update.message.reply_text("❌ Erro ao definir valor. Tente novamente.")
 
 
 async def listar_recorrentes(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -854,22 +937,44 @@ async def listar_recorrentes(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return
 
+    from datetime import datetime
+    mes_atual = datetime.now().month
+    ano_atual = datetime.now().year
+
     total_mensal = db.calcular_total_recorrentes_mes(user_id)
 
-    msg = f"🔄 **Seus Gastos Recorrentes** (Total: R$ {total_mensal:.2f}/mês)\n\n"
+    msg = f"🔄 **Seus Gastos Recorrentes** (Total fixo: R$ {total_mensal:.2f}/mês)\n\n"
 
     for g in gastos:
+        # Busca pagamento do mês atual
+        pagamento = db.obter_ou_criar_pagamento_mes(g.id, user_id)
+
+        # Define o valor a exibir
+        if g.valor_variavel:
+            if pagamento.valor:
+                valor_texto = f"R$ {pagamento.valor:.2f} (definido)"
+            else:
+                valor_texto = "VARIÁVEL (não definido)"
+        else:
+            valor_texto = f"R$ {g.valor_padrao:.2f}"
+
+        # Status de pagamento
+        status = "✅ PAGO" if pagamento.pago else "⏳ Pendente"
+
         msg += (
             f"📌 **{g.descricao}**\n"
-            f"   💰 R$ {g.valor:.2f}\n"
+            f"   💰 {valor_texto}\n"
             f"   📦 {g.caixinha.nome}\n"
-            f"   📅 Dia {g.dia_vencimento}\n"
+            f"   📅 Dia {g.dia_vencimento}/{mes_atual:02d}\n"
+            f"   {status}\n"
             f"   ID: {g.id}\n\n"
         )
 
     msg += (
-        f"💡 Para remover um gasto recorrente:\n"
-        f"/remover_recorrente <ID>"
+        f"💡 **Comandos:**\n"
+        f"/valor_recorrente <nome> <valor> - Definir valor variável\n"
+        f"/remover_recorrente <ID> - Remover recorrente\n"
+        f"Responda 'Pago' quando pagar uma conta"
     )
 
     await update.message.reply_text(msg)
@@ -1633,6 +1738,78 @@ async def processar_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     texto = update.message.text.strip()
 
+    # Verifica se é a palavra "Pago" (marca gastos recorrentes como pagos)
+    if texto.lower() in ['pago', 'paga']:
+        pendentes = db.obter_pagamentos_pendentes(user_id)
+        if not pendentes:
+            await update.message.reply_text(
+                "✅ Você não tem gastos recorrentes pendentes no momento!\n\n"
+                "Use /recorrentes para ver todos os seus gastos."
+            )
+            return
+
+        # Mostra lista de pendentes para escolher
+        msg = "📋 **Qual conta você pagou?**\n\n"
+        for i, (gasto, pagamento) in enumerate(pendentes, 1):
+            if gasto.valor_variavel:
+                valor_texto = f"R$ {pagamento.valor:.2f}" if pagamento.valor else "Valor não definido"
+            else:
+                valor_texto = f"R$ {gasto.valor_padrao:.2f}"
+            msg += f"{i}. {gasto.descricao} - {valor_texto}\n"
+
+        msg += "\n💡 Responda com o número da conta"
+
+        # Armazena no pending_transactions para processar depois
+        trans_id = f"pago_{user_id}_{int(update.message.date.timestamp())}"
+        pending_transactions[trans_id] = {
+            'user_id': user_id,
+            'tipo': 'pago_recorrente',
+            'pendentes': pendentes
+        }
+
+        await update.message.reply_text(msg)
+        return
+
+    # Verifica se é um número (resposta para marcar como pago)
+    if texto.isdigit():
+        # Busca se há transação pendente do tipo pago_recorrente
+        trans_id = None
+        for tid, tdata in pending_transactions.items():
+            if tdata.get('tipo') == 'pago_recorrente' and tdata['user_id'] == user_id:
+                trans_id = tid
+                break
+
+        if trans_id:
+            try:
+                numero = int(texto)
+                pendentes = pending_transactions[trans_id]['pendentes']
+
+                if numero < 1 or numero > len(pendentes):
+                    await update.message.reply_text("❌ Número inválido. Tente novamente.")
+                    return
+
+                gasto, pagamento = pendentes[numero - 1]
+
+                # Marca como pago
+                db.marcar_recorrente_como_pago(gasto.id, user_id)
+
+                if gasto.valor_variavel:
+                    valor_texto = f"R$ {pagamento.valor:.2f}" if pagamento.valor else "Valor não definido"
+                else:
+                    valor_texto = f"R$ {gasto.valor_padrao:.2f}"
+
+                await update.message.reply_text(
+                    f"✅ **{gasto.descricao}** marcado como pago!\n\n"
+                    f"💰 {valor_texto}\n"
+                    f"📦 {gasto.caixinha.nome}"
+                )
+
+                del pending_transactions[trans_id]
+                return
+
+            except (ValueError, IndexError):
+                pass
+
     # Verifica se há alguma transação pendente esperando criar caixinha
     trans_id = None
     for tid, tdata in pending_transactions.items():
@@ -1860,6 +2037,7 @@ def main():
     application.add_handler(CommandHandler("previsoes", previsoes))
     application.add_handler(CommandHandler("dicas", dicas))
     application.add_handler(CommandHandler("criar_recorrente", criar_recorrente))
+    application.add_handler(CommandHandler("valor_recorrente", valor_recorrente))
     application.add_handler(CommandHandler("recorrentes", listar_recorrentes))
     application.add_handler(CommandHandler("remover_recorrente", remover_recorrente))
     application.add_handler(CommandHandler("resetar_tudo", resetar_tudo))

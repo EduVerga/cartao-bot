@@ -18,6 +18,10 @@ class BotScheduler:
         self.telegram_app = telegram_app
         self.scheduler = BackgroundScheduler()
 
+        # Importa sistema de lembretes
+        from lembretes_recorrentes import LembretesRecorrentes
+        self.lembretes = LembretesRecorrentes(db)
+
     def verificar_reset_automatico(self):
         """Verifica se algum usuário precisa de reset hoje"""
         try:
@@ -132,6 +136,13 @@ class BotScheduler:
         except Exception as e:
             logger.error(f"Erro ao verificar relatório de fechamento: {e}")
 
+    async def verificar_lembretes_wrapper(self):
+        """Wrapper para chamar verificar_e_enviar_lembretes de forma síncrona"""
+        try:
+            await self.lembretes.verificar_e_enviar_lembretes(self.telegram_app)
+        except Exception as e:
+            logger.error(f"Erro ao verificar lembretes: {e}")
+
     def iniciar(self):
         """Inicia o scheduler"""
         # Verifica diariamente às 00:10 se precisa fazer reset
@@ -152,8 +163,17 @@ class BotScheduler:
             id='relatorio_fechamento'
         )
 
+        # Verifica lembretes de gastos recorrentes diariamente às 09:00
+        self.scheduler.add_job(
+            lambda: self.telegram_app._application.create_task(self.verificar_lembretes_wrapper()),
+            'cron',
+            hour=9,
+            minute=0,
+            id='lembretes_recorrentes'
+        )
+
         self.scheduler.start()
-        logger.info("Scheduler V3 iniciado - Reset às 00:10 e Relatório às 22:00")
+        logger.info("Scheduler V3 iniciado - Reset às 00:10, Relatório às 22:00, Lembretes às 09:00")
 
     def parar(self):
         """Para o scheduler"""

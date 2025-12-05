@@ -91,15 +91,45 @@ class GastoRecorrente(Base):
     user_id = Column(Integer, nullable=False)
     caixinha_id = Column(Integer, ForeignKey('caixinhas.id'))
     descricao = Column(String(200), nullable=False)
-    valor = Column(Float, nullable=False)
+    valor_padrao = Column(Float, nullable=True)  # Valor padrão (None se for variável)
     dia_vencimento = Column(Integer, nullable=False)  # Dia do mês (1-28)
     ativo = Column(Integer, default=1)  # 1 = ativo, 0 = inativo
     criado_em = Column(DateTime, default=datetime.now)
 
     caixinha = relationship("Caixinha")
+    pagamentos = relationship("PagamentoRecorrente", back_populates="gasto_recorrente")
+
+    @property
+    def valor_variavel(self):
+        """Retorna True se o valor é variável (não tem valor padrão)"""
+        return self.valor_padrao is None
 
     def __repr__(self):
-        return f"<GastoRecorrente {self.descricao}: R$ {self.valor:.2f} dia {self.dia_vencimento}>"
+        if self.valor_variavel:
+            return f"<GastoRecorrente {self.descricao}: VARIÁVEL dia {self.dia_vencimento}>"
+        return f"<GastoRecorrente {self.descricao}: R$ {self.valor_padrao:.2f} dia {self.dia_vencimento}>"
+
+
+class PagamentoRecorrente(Base):
+    """Modelo para controlar pagamentos mensais de gastos recorrentes"""
+    __tablename__ = 'pagamentos_recorrentes'
+
+    id = Column(Integer, primary_key=True)
+    gasto_recorrente_id = Column(Integer, ForeignKey('gastos_recorrentes.id'))
+    user_id = Column(Integer, nullable=False)
+    mes = Column(Integer, nullable=False)  # Mês (1-12)
+    ano = Column(Integer, nullable=False)  # Ano
+    valor = Column(Float, nullable=True)  # Valor definido para este mês
+    pago = Column(Integer, default=0)  # 0 = não pago, 1 = pago
+    data_pagamento = Column(DateTime, nullable=True)  # Quando foi marcado como pago
+    ultimo_lembrete = Column(DateTime, nullable=True)  # Último lembrete enviado
+    criado_em = Column(DateTime, default=datetime.now)
+
+    gasto_recorrente = relationship("GastoRecorrente", back_populates="pagamentos")
+
+    def __repr__(self):
+        status = "PAGO" if self.pago else "PENDENTE"
+        return f"<Pagamento {self.mes}/{self.ano}: {status}>"
 
 
 class Database:
@@ -228,13 +258,13 @@ class Database:
         self.session.commit()
         return len(caixinhas)
 
-    def criar_gasto_recorrente(self, user_id: int, caixinha_id: int, descricao: str, valor: float, dia_vencimento: int):
-        """Cria um novo gasto recorrente"""
+    def criar_gasto_recorrente(self, user_id: int, caixinha_id: int, descricao: str, dia_vencimento: int, valor_padrao: float = None):
+        """Cria um novo gasto recorrente (valor_padrao=None para valores variáveis)"""
         gasto = GastoRecorrente(
             user_id=user_id,
             caixinha_id=caixinha_id,
             descricao=descricao,
-            valor=valor,
+            valor_padrao=valor_padrao,
             dia_vencimento=dia_vencimento
         )
         self.session.add(gasto)
@@ -284,7 +314,86 @@ class Database:
     def calcular_total_recorrentes_mes(self, user_id: int):
         """Calcula o total de gastos recorrentes do mês"""
         gastos = self.listar_gastos_recorrentes(user_id, apenas_ativos=True)
-        return sum(g.valor for g in gastos)
+        return sum(g.valor_padrao for g in gastos if g.valor_padrao)
+
+    def buscar_gasto_recorrente_por_descricao(self, user_id: int, descricao: str):
+        """Busca um gasto recorrente pela descrição"""
+        return self.session.query(GastoRecorrente).filter_by(
+            user_id=user_id,
+            descricao=descricao,
+            ativo=1
+        ).first()
+
+    def obter_ou_criar_pagamento_mes(self, gasto_recorrente_id: int, user_id: int, mes: int = None, ano: int = None):
+        """Obtém ou cria um registro de pagamento para o mês atual"""
+        from datetime import datetime
+        if mes is None:
+            mes = datetime.now().month
+        if ano is None:
+            ano = datetime.now().year
+
+        pagamento = self.session.query(PagamentoRecorrente).filter_by(
+            gasto_recorrente_id=gasto_recorrente_id,
+            user_id=user_id,
+            mes=mes,
+            ano=ano
+        ).first()
+
+        if not pagamento:
+            pagamento = PagamentoRecorrente(
+                gasto_recorrente_id=gasto_recorrente_id,
+                user_id=user_id,
+                mes=mes,
+                ano=ano
+            )
+            self.session.add(pagamento)
+            self.session.commit()
+
+        return pagamento
+
+    def definir_valor_recorrente_mes(self, gasto_recorrente_id: int, user_id: int, valor: float, mes: int = None, ano: int = None):
+        """Define o valor de um gasto recorrente para o mês atual"""
+        pagamento = self.obter_ou_criar_pagamento_mes(gasto_recorrente_id, user_id, mes, ano)
+        pagamento.valor = valor
+        self.session.commit()
+        return pagamento
+
+    def marcar_recorrente_como_pago(self, gasto_recorrente_id: int, user_id: int, mes: int = None, ano: int = None):
+        """Marca um gasto recorrente como pago"""
+        from datetime import datetime
+        pagamento = self.obter_ou_criar_pagamento_mes(gasto_recorrente_id, user_id, mes, ano)
+        pagamento.pago = 1
+        pagamento.data_pagamento = datetime.now()
+        self.session.commit()
+        return pagamento
+
+    def obter_pagamentos_pendentes(self, user_id: int, mes: int = None, ano: int = None):
+        """Lista todos os pagamentos pendentes do usuário para o mês"""
+        from datetime import datetime
+        if mes is None:
+            mes = datetime.now().month
+        if ano is None:
+            ano = datetime.now().year
+
+        # Busca todos os gastos recorrentes ativos
+        gastos = self.listar_gastos_recorrentes(user_id, apenas_ativos=True)
+        pendentes = []
+
+        for gasto in gastos:
+            pagamento = self.obter_ou_criar_pagamento_mes(gasto.id, user_id, mes, ano)
+            if not pagamento.pago:
+                pendentes.append((gasto, pagamento))
+
+        return pendentes
+
+    def atualizar_ultimo_lembrete(self, pagamento_id: int):
+        """Atualiza a data do último lembrete enviado"""
+        from datetime import datetime
+        pagamento = self.session.query(PagamentoRecorrente).get(pagamento_id)
+        if pagamento:
+            pagamento.ultimo_lembrete = datetime.now()
+            self.session.commit()
+        return pagamento
 
     def resetar_tudo_usuario(self, user_id: int):
         """
@@ -307,10 +416,13 @@ class Database:
             # 3. Deleta todas as caixinhas (CASCADE vai deletar transações relacionadas automaticamente)
             self.session.query(Caixinha).filter_by(user_id=user_id).delete()
 
-            # 4. Deleta gastos recorrentes
+            # 4. Deleta pagamentos recorrentes
+            self.session.query(PagamentoRecorrente).filter_by(user_id=user_id).delete()
+
+            # 5. Deleta gastos recorrentes
             self.session.query(GastoRecorrente).filter_by(user_id=user_id).delete()
 
-            # 5. Deleta configurações do usuário
+            # 6. Deleta configurações do usuário
             self.session.query(ConfiguracaoUsuario).filter_by(user_id=user_id).delete()
 
             self.session.commit()
