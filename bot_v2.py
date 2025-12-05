@@ -2866,11 +2866,28 @@ async def menu_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
     elif data.startswith("delcaixa_"):
         # Usuário selecionou uma caixinha para deletar - pede confirmação
-        caixinha_id = int(data.split("_")[1])
-        caixinha = db.buscar_caixinha_por_id(caixinha_id)
+        try:
+            caixinha_id = int(data.split("_")[1])
+            logger.info(f"User {user_id} tentando deletar caixinha ID: {caixinha_id}")
 
-        if not caixinha:
-            await query.edit_message_text("❌ Caixinha não encontrada.")
+            caixinha = db.buscar_caixinha_por_id(caixinha_id)
+
+            if not caixinha:
+                logger.error(f"Caixinha {caixinha_id} não encontrada")
+                await query.edit_message_text("❌ Caixinha não encontrada.")
+                return
+
+            # Verifica se a caixinha pertence ao usuário
+            if caixinha.user_id != user_id:
+                logger.error(f"Caixinha {caixinha_id} não pertence ao user {user_id}")
+                await query.edit_message_text("❌ Esta caixinha não pertence a você.")
+                return
+
+        except Exception as e:
+            logger.error(f"Erro ao processar delcaixa: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            await query.edit_message_text(f"❌ Erro: {str(e)}")
             return
 
         keyboard = [

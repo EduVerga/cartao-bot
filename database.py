@@ -186,6 +186,10 @@ class Database:
             user_id=user_id
         ).order_by(Transacao.criado_em.desc()).limit(limit).all()
 
+    def buscar_caixinha_por_id(self, caixinha_id: int):
+        """Busca uma caixinha por ID"""
+        return self.session.get(Caixinha, caixinha_id)
+
     def deletar_caixinha(self, caixinha_id: int):
         """Deleta uma caixinha"""
         caixinha = self.session.query(Caixinha).get(caixinha_id)
