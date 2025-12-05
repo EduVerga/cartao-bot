@@ -111,6 +111,9 @@ Envie uma foto do comprovante do cartão de crédito e eu vou:
 
 💰 **Comandos disponíveis:**
 
+🎯 **Menu Interativo:**
+/menu - Abrir menu com botões (recomendado!)
+
 📦 **Gerenciar Caixinhas:**
 /criar <nome> <limite> - Criar nova caixinha
   Exemplo: /criar Alimentação 1000
@@ -142,9 +145,9 @@ Envie uma foto do comprovante do cartão de crédito e eu vou:
   Exemplo: /dicas Mercado
 
 🔄 **Gastos Recorrentes (Contas Fixas):**
-/criar_recorrente <desc> | <caixinha> | <dia> - Criar recorrente
-  Valor fixo: /criar_recorrente Netflix | Streaming | 45.90 | 15
-  Valor variável: /criar_recorrente Condominio | Moradia | 10
+/criar_recorrente <desc> | <dia> - Criar recorrente
+  Valor fixo: /criar_recorrente Netflix | 45.90 | 15
+  Valor variável: /criar_recorrente Condominio | 10
 /valor_recorrente <nome> <valor> - Definir valor do mês
   Exemplo: /valor_recorrente Condominio 650
 /pagar_recorrente <nome> - Marcar conta como paga
@@ -697,7 +700,6 @@ async def relatorio_recorrente(update: Update, context: ContextTypes.DEFAULT_TYP
         mensagem += (
             f"{status_emoji} **{g.descricao}**\n"
             f"   💰 {valor_texto}\n"
-            f"   📦 {g.caixinha.nome}\n"
             f"   📅 Dia {g.dia_vencimento}/{mes_atual:02d} ({dias_texto})\n"
             f"   {status_texto}\n\n"
         )
@@ -960,23 +962,23 @@ async def dicas(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def criar_recorrente(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Comando /criar_recorrente <descricao> | <caixinha> | <dia>
-    OU /criar_recorrente <descricao> | <caixinha> | <valor fixo> | <dia>"""
+    """Comando /criar_recorrente <descricao> | <dia>
+    OU /criar_recorrente <descricao> | <valor fixo> | <dia>"""
     user_id = update.effective_user.id
 
     if not is_authorized(user_id):
         await update.message.reply_text("🚫 Acesso não autorizado.")
         return
 
-    if len(context.args) < 3:
+    if len(context.args) < 2:
         await update.message.reply_text(
             "❌ Uso correto:\n\n"
             "**Valor fixo:**\n"
-            "/criar_recorrente <desc> | <caixinha> | <valor> | <dia>\n"
-            "Exemplo: /criar_recorrente Netflix | Streaming | 45.90 | 15\n\n"
+            "/criar_recorrente <desc> | <valor> | <dia>\n"
+            "Exemplo: /criar_recorrente Netflix | 45.90 | 15\n\n"
             "**Valor variável:**\n"
-            "/criar_recorrente <desc> | <caixinha> | <dia>\n"
-            "Exemplo: /criar_recorrente Condominio | Moradia | 10\n"
+            "/criar_recorrente <desc> | <dia>\n"
+            "Exemplo: /criar_recorrente Condominio | 10\n"
             "(Use /valor_recorrente para definir o valor de cada mês)"
         )
         return
@@ -986,47 +988,36 @@ async def criar_recorrente(update: Update, context: ContextTypes.DEFAULT_TYPE):
         texto_completo = ' '.join(context.args)
         partes = [p.strip() for p in texto_completo.split('|')]
 
-        if len(partes) not in [3, 4]:
+        if len(partes) not in [2, 3]:
             await update.message.reply_text(
                 "❌ Use | para separar os campos!\n\n"
-                "3 campos = valor variável\n"
-                "4 campos = valor fixo"
+                "2 campos = valor variável\n"
+                "3 campos = valor fixo"
             )
             return
 
         descricao = partes[0]
-        nome_caixinha = partes[1]
 
-        # Se tem 4 partes, o valor é fixo
-        if len(partes) == 4:
-            valor_padrao = float(partes[2])
-            dia = int(partes[3])
+        # Se tem 3 partes, o valor é fixo
+        if len(partes) == 3:
+            valor_padrao = float(partes[1])
+            dia = int(partes[2])
 
             if valor_padrao <= 0:
                 await update.message.reply_text("❌ O valor deve ser maior que zero!")
                 return
         else:
-            # Se tem 3 partes, o valor é variável
+            # Se tem 2 partes, o valor é variável
             valor_padrao = None
-            dia = int(partes[2])
+            dia = int(partes[1])
 
         if dia < 1 or dia > 28:
             await update.message.reply_text("❌ O dia deve ser entre 1 e 28!")
             return
 
-        # Busca caixinha
-        caixinha = db.buscar_caixinha_por_categoria(user_id, nome_caixinha)
-        if not caixinha:
-            await update.message.reply_text(
-                f"❌ Caixinha '{nome_caixinha}' não encontrada.\n\n"
-                f"Use /caixinhas para ver suas caixinhas."
-            )
-            return
-
-        # Cria gasto recorrente
+        # Cria gasto recorrente (SEM caixinha)
         gasto = db.criar_gasto_recorrente(
             user_id=user_id,
-            caixinha_id=caixinha.id,
             descricao=descricao,
             dia_vencimento=dia,
             valor_padrao=valor_padrao
@@ -1037,7 +1028,6 @@ async def criar_recorrente(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"✅ **Gasto recorrente criado!**\n\n"
                 f"🔄 {gasto.descricao}\n"
                 f"💰 Valor VARIÁVEL (defina a cada mês)\n"
-                f"📦 Caixinha: {caixinha.nome}\n"
                 f"📅 Vencimento: Todo dia {gasto.dia_vencimento}\n\n"
                 f"Use /valor_recorrente {gasto.descricao} <valor> para definir o valor do mês."
             )
@@ -1046,7 +1036,6 @@ async def criar_recorrente(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"✅ **Gasto recorrente criado!**\n\n"
                 f"🔄 {gasto.descricao}\n"
                 f"💰 R$ {gasto.valor_padrao:.2f}\n"
-                f"📦 Caixinha: {caixinha.nome}\n"
                 f"📅 Vencimento: Todo dia {gasto.dia_vencimento}\n\n"
                 f"Use /recorrentes para ver todos os seus gastos recorrentes."
             )
@@ -1201,9 +1190,9 @@ async def listar_recorrentes(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text(
             "🔄 **Você não tem gastos recorrentes cadastrados.**\n\n"
             "Crie um com:\n"
-            "/criar_recorrente <descricao> | <caixinha> | <valor> | <dia>\n\n"
+            "/criar_recorrente <descricao> | <valor> | <dia>\n\n"
             "Exemplo:\n"
-            "/criar_recorrente Netflix | Streaming | 45.90 | 15"
+            "/criar_recorrente Netflix | 45.90 | 15"
         )
         return
 
@@ -1234,7 +1223,6 @@ async def listar_recorrentes(update: Update, context: ContextTypes.DEFAULT_TYPE)
         msg += (
             f"📌 **{g.descricao}**\n"
             f"   💰 {valor_texto}\n"
-            f"   📦 {g.caixinha.nome}\n"
             f"   📅 Dia {g.dia_vencimento}/{mes_atual:02d}\n"
             f"   {status}\n"
             f"   ID: {g.id}\n\n"
@@ -2264,6 +2252,276 @@ async def ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await start(update, context)
 
 
+async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /menu - Menu interativo principal"""
+    user_id = update.effective_user.id
+
+    if not is_authorized(user_id):
+        await update.message.reply_text("🚫 Acesso não autorizado.")
+        return
+
+    keyboard = [
+        [InlineKeyboardButton("💳 Caixinhas (Cartão de Crédito)", callback_data="menu_caixinhas")],
+        [InlineKeyboardButton("🔄 Gastos Recorrentes", callback_data="menu_recorrentes")],
+        [InlineKeyboardButton("📊 Relatórios e Análises", callback_data="menu_relatorios")],
+        [InlineKeyboardButton("⚙️ Configurações", callback_data="menu_config")],
+        [InlineKeyboardButton("❓ Ajuda", callback_data="menu_ajuda")]
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(
+        "🎯 **Menu Principal**\n\n"
+        "Escolha uma opção abaixo:",
+        reply_markup=reply_markup
+    )
+
+
+async def menu_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler para callbacks do menu"""
+    query = update.callback_query
+    await query.answer()
+
+    user_id = update.effective_user.id
+
+    if not is_authorized(user_id):
+        await query.edit_message_text("🚫 Acesso não autorizado.")
+        return
+
+    data = query.data
+
+    # Menu Caixinhas
+    if data == "menu_caixinhas":
+        keyboard = [
+            [InlineKeyboardButton("➕ Criar Nova Caixinha", callback_data="action_criar_caixinha")],
+            [InlineKeyboardButton("📋 Ver Todas as Caixinhas", callback_data="action_listar_caixinhas")],
+            [InlineKeyboardButton("📊 Gráficos das Caixinhas", callback_data="action_graficos")],
+            [InlineKeyboardButton("🔙 Voltar", callback_data="menu_principal")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(
+            "💳 **Menu de Caixinhas (Cartão de Crédito)**\n\n"
+            "Gerencie suas categorias de gastos do cartão:",
+            reply_markup=reply_markup
+        )
+
+    # Menu Recorrentes
+    elif data == "menu_recorrentes":
+        keyboard = [
+            [InlineKeyboardButton("➕ Criar Gasto Recorrente", callback_data="action_criar_recorrente")],
+            [InlineKeyboardButton("📋 Ver Gastos Recorrentes", callback_data="action_listar_recorrentes")],
+            [InlineKeyboardButton("💰 Definir Valor do Mês", callback_data="action_definir_valor")],
+            [InlineKeyboardButton("✅ Marcar Como Pago", callback_data="action_pagar_recorrente")],
+            [InlineKeyboardButton("🔙 Voltar", callback_data="menu_principal")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(
+            "🔄 **Menu de Gastos Recorrentes**\n\n"
+            "Gerencie suas contas fixas mensais:",
+            reply_markup=reply_markup
+        )
+
+    # Menu Relatórios
+    elif data == "menu_relatorios":
+        keyboard = [
+            [InlineKeyboardButton("📊 Relatório do Cartão", callback_data="action_relatorio_cartao")],
+            [InlineKeyboardButton("🔄 Relatório de Recorrentes", callback_data="action_relatorio_recorrentes")],
+            [InlineKeyboardButton("📈 Histórico de Recorrentes", callback_data="action_historico")],
+            [InlineKeyboardButton("🔮 Previsões de Gastos", callback_data="action_previsoes")],
+            [InlineKeyboardButton("🔙 Voltar", callback_data="menu_principal")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(
+            "📊 **Menu de Relatórios e Análises**\n\n"
+            "Visualize e analise seus gastos:",
+            reply_markup=reply_markup
+        )
+
+    # Menu Configurações
+    elif data == "menu_config":
+        keyboard = [
+            [InlineKeyboardButton("📅 Definir Dia de Fechamento", callback_data="action_definir_fechamento")],
+            [InlineKeyboardButton("🔄 Resetar Gastos Agora", callback_data="action_resetar_mes")],
+            [InlineKeyboardButton("🔙 Voltar", callback_data="menu_principal")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(
+            "⚙️ **Menu de Configurações**\n\n"
+            "Ajuste as configurações do bot:",
+            reply_markup=reply_markup
+        )
+
+    # Menu Ajuda
+    elif data == "menu_ajuda":
+        keyboard = [
+            [InlineKeyboardButton("🔙 Voltar", callback_data="menu_principal")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(
+            "❓ **Ajuda**\n\n"
+            "📖 **Como usar o bot:**\n\n"
+            "**Caixinhas (Cartão de Crédito):**\n"
+            "• Envie foto de comprovante para registrar gasto\n"
+            "• Ou envie mensagem de texto/áudio\n"
+            "• Use /caixinhas para ver todas\n\n"
+            "**Gastos Recorrentes:**\n"
+            "• Crie contas fixas com dia de vencimento\n"
+            "• Receba lembretes automáticos\n"
+            "• Valores podem ser fixos ou variáveis\n\n"
+            "**Comandos Úteis:**\n"
+            "/menu - Este menu\n"
+            "/ajuda - Ajuda completa\n"
+            "/caixinhas - Ver caixinhas\n"
+            "/recorrentes - Ver recorrentes\n"
+            "/relatorio - Relatório do cartão\n"
+            "/relatorio_recorrente - Relatório de contas",
+            reply_markup=reply_markup
+        )
+
+    # Voltar ao menu principal
+    elif data == "menu_principal":
+        keyboard = [
+            [InlineKeyboardButton("💳 Caixinhas (Cartão de Crédito)", callback_data="menu_caixinhas")],
+            [InlineKeyboardButton("🔄 Gastos Recorrentes", callback_data="menu_recorrentes")],
+            [InlineKeyboardButton("📊 Relatórios e Análises", callback_data="menu_relatorios")],
+            [InlineKeyboardButton("⚙️ Configurações", callback_data="menu_config")],
+            [InlineKeyboardButton("❓ Ajuda", callback_data="menu_ajuda")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(
+            "🎯 **Menu Principal**\n\n"
+            "Escolha uma opção abaixo:",
+            reply_markup=reply_markup
+        )
+
+    # Ações - Caixinhas
+    elif data == "action_criar_caixinha":
+        await query.edit_message_text(
+            "➕ **Criar Nova Caixinha**\n\n"
+            "Use o comando:\n"
+            "/criar <nome> <limite>\n\n"
+            "Exemplo:\n"
+            "/criar Mercado 500"
+        )
+
+    elif data == "action_listar_caixinhas":
+        await query.message.delete()
+        # Simula uma mensagem do usuário para chamar a função
+        fake_update = Update(
+            update_id=query.message.message_id,
+            message=query.message
+        )
+        fake_update.effective_user = update.effective_user
+        await caixinhas(fake_update, context)
+
+    elif data == "action_graficos":
+        await query.message.delete()
+        fake_update = Update(
+            update_id=query.message.message_id,
+            message=query.message
+        )
+        fake_update.effective_user = update.effective_user
+        await grafico(fake_update, context)
+
+    # Ações - Recorrentes
+    elif data == "action_criar_recorrente":
+        await query.edit_message_text(
+            "➕ **Criar Gasto Recorrente**\n\n"
+            "**Valor fixo:**\n"
+            "/criar_recorrente <desc> | <valor> | <dia>\n"
+            "Exemplo: /criar_recorrente Netflix | 45.90 | 15\n\n"
+            "**Valor variável:**\n"
+            "/criar_recorrente <desc> | <dia>\n"
+            "Exemplo: /criar_recorrente Condominio | 10"
+        )
+
+    elif data == "action_listar_recorrentes":
+        await query.message.delete()
+        fake_update = Update(
+            update_id=query.message.message_id,
+            message=query.message
+        )
+        fake_update.effective_user = update.effective_user
+        await listar_recorrentes(fake_update, context)
+
+    elif data == "action_definir_valor":
+        await query.edit_message_text(
+            "💰 **Definir Valor do Mês**\n\n"
+            "Use o comando:\n"
+            "/valor_recorrente <nome> <valor>\n\n"
+            "Exemplo:\n"
+            "/valor_recorrente Condominio 650"
+        )
+
+    elif data == "action_pagar_recorrente":
+        await query.edit_message_text(
+            "✅ **Marcar Como Pago**\n\n"
+            "Use o comando:\n"
+            "/pagar_recorrente <nome>\n\n"
+            "Exemplo:\n"
+            "/pagar_recorrente Luz\n\n"
+            "Ou responda 'Pago' em qualquer momento"
+        )
+
+    # Ações - Relatórios
+    elif data == "action_relatorio_cartao":
+        await query.message.delete()
+        fake_update = Update(
+            update_id=query.message.message_id,
+            message=query.message
+        )
+        fake_update.effective_user = update.effective_user
+        await relatorio(fake_update, context)
+
+    elif data == "action_relatorio_recorrentes":
+        await query.message.delete()
+        fake_update = Update(
+            update_id=query.message.message_id,
+            message=query.message
+        )
+        fake_update.effective_user = update.effective_user
+        await relatorio_recorrente(fake_update, context)
+
+    elif data == "action_historico":
+        await query.edit_message_text(
+            "📈 **Histórico de Recorrentes**\n\n"
+            "Use o comando:\n"
+            "/historico_recorrente <meses>\n\n"
+            "Exemplo:\n"
+            "/historico_recorrente 12\n"
+            "(mostra últimos 12 meses)"
+        )
+
+    elif data == "action_previsoes":
+        await query.message.delete()
+        fake_update = Update(
+            update_id=query.message.message_id,
+            message=query.message
+        )
+        fake_update.effective_user = update.effective_user
+        await previsoes(fake_update, context)
+
+    # Ações - Configurações
+    elif data == "action_definir_fechamento":
+        await query.edit_message_text(
+            "📅 **Definir Dia de Fechamento**\n\n"
+            "Use o comando:\n"
+            "/fechamento <dia>\n\n"
+            "Exemplo:\n"
+            "/fechamento 10\n"
+            "(dia 10 de cada mês)"
+        )
+
+    elif data == "action_resetar_mes":
+        await query.message.delete()
+        fake_update = Update(
+            update_id=query.message.message_id,
+            message=query.message
+        )
+        fake_update.effective_user = update.effective_user
+        await resetar_mes(fake_update, context)
+
+
 def main():
     """Inicia o bot"""
     # Auto-importa dados se existir backup
@@ -2291,6 +2549,7 @@ def main():
     # Handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("ajuda", ajuda))
+    application.add_handler(CommandHandler("menu", menu))
     application.add_handler(CommandHandler("criar", criar_caixinha))
     application.add_handler(CommandHandler("fechamento", definir_fechamento))
     application.add_handler(CommandHandler("testar_reset", testar_reset))
@@ -2317,6 +2576,9 @@ def main():
     application.add_handler(MessageHandler(filters.PHOTO, processar_imagem))
     application.add_handler(MessageHandler(filters.VOICE, processar_audio))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, processar_texto))
+
+    # Callback handlers - ordem importa! Específicos antes dos genéricos
+    application.add_handler(CallbackQueryHandler(menu_callback_handler, pattern="^(menu_|action_)"))
     application.add_handler(CallbackQueryHandler(callback_handler))
 
     # Scheduler V3 - Reset automático baseado no dia de fechamento

@@ -76,8 +76,7 @@ class LembretesRecorrentes:
         if dias_ate_vencimento == 0:
             msg = f"🚨 **VENCIMENTO HOJE - {gasto.descricao}**\n\n"
             msg += f"⏰ **Hoje é o último dia para o pagamento dessa conta!**\n"
-            msg += f"📅 Vencimento: {data_vencimento}\n"
-            msg += f"📦 Caixinha: {gasto.caixinha.nome}\n\n"
+            msg += f"📅 Vencimento: {data_vencimento}\n\n"
 
             if gasto.valor_variavel:
                 if pagamento.valor:
@@ -99,8 +98,7 @@ class LembretesRecorrentes:
                 dias_texto = f"em **{dias_ate_vencimento} dias**"
 
             msg = f"🔔 **Lembrete - {gasto.descricao}**\n\n"
-            msg += f"📅 Vence {dias_texto} ({data_vencimento})\n"
-            msg += f"📦 Caixinha: {gasto.caixinha.nome}\n\n"
+            msg += f"📅 Vence {dias_texto} ({data_vencimento})\n\n"
 
             if gasto.valor_variavel:
                 if pagamento.valor:

@@ -89,7 +89,7 @@ class GastoRecorrente(Base):
 
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, nullable=False)
-    caixinha_id = Column(Integer, ForeignKey('caixinhas.id'))
+    caixinha_id = Column(Integer, ForeignKey('caixinhas.id'), nullable=True)  # Opcional - não usado para recorrentes
     descricao = Column(String(200), nullable=False)
     valor_padrao = Column(Float, nullable=True)  # Valor padrão (None se for variável)
     dia_vencimento = Column(Integer, nullable=False)  # Dia do mês (1-28)
@@ -258,11 +258,11 @@ class Database:
         self.session.commit()
         return len(caixinhas)
 
-    def criar_gasto_recorrente(self, user_id: int, caixinha_id: int, descricao: str, dia_vencimento: int, valor_padrao: float = None):
+    def criar_gasto_recorrente(self, user_id: int, descricao: str, dia_vencimento: int, valor_padrao: float = None, caixinha_id: int = None):
         """Cria um novo gasto recorrente (valor_padrao=None para valores variáveis)"""
         gasto = GastoRecorrente(
             user_id=user_id,
-            caixinha_id=caixinha_id,
+            caixinha_id=caixinha_id,  # Agora opcional
             descricao=descricao,
             valor_padrao=valor_padrao,
             dia_vencimento=dia_vencimento
