@@ -1996,6 +1996,152 @@ async def processar_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     texto = update.message.text.strip()
 
+    # ===== ESTADOS DE CONVERSA DO MENU INTERATIVO =====
+
+    # Estado: Aguardando nome da caixinha
+    if context.user_data.get('estado') == 'aguardando_nome_caixinha':
+        context.user_data['nome_caixinha'] = texto
+        context.user_data['estado'] = 'aguardando_limite_caixinha'
+        await update.message.reply_text(
+            f"✅ Nome: **{texto}**\n\n"
+            f"Agora digite o limite mensal (em reais):\n\n"
+            f"Exemplo: 1000"
+        )
+        return
+
+    # Estado: Aguardando limite da caixinha
+    if context.user_data.get('estado') == 'aguardando_limite_caixinha':
+        try:
+            limite = float(texto.replace(',', '.'))
+            if limite <= 0:
+                await update.message.reply_text("❌ O limite deve ser maior que zero. Tente novamente:")
+                return
+
+            nome = context.user_data.get('nome_caixinha')
+
+            # Cria a caixinha
+            nova = db.criar_caixinha(user_id, nome, limite)
+
+            await update.message.reply_text(
+                f"✅ **Caixinha criada com sucesso!**\n\n"
+                f"📦 {nova.nome}\n"
+                f"💰 Limite: R$ {nova.limite:.2f}\n\n"
+                f"Use /menu para voltar ao menu principal."
+            )
+
+            # Limpa o estado
+            context.user_data.clear()
+            return
+
+        except ValueError:
+            await update.message.reply_text("❌ Valor inválido. Digite apenas números (ex: 1000):")
+            return
+
+    # Estado: Aguardando nome do gasto recorrente
+    if context.user_data.get('estado') == 'aguardando_nome_recorrente':
+        context.user_data['nome_recorrente'] = texto
+        context.user_data['estado'] = 'aguardando_dia_recorrente'
+        await update.message.reply_text(
+            f"✅ Conta: **{texto}**\n\n"
+            f"Qual o dia de vencimento? (1-28)\n\n"
+            f"Exemplo: 10"
+        )
+        return
+
+    # Estado: Aguardando dia de vencimento
+    if context.user_data.get('estado') == 'aguardando_dia_recorrente':
+        try:
+            dia = int(texto)
+            if dia < 1 or dia > 28:
+                await update.message.reply_text("❌ O dia deve estar entre 1 e 28. Tente novamente:")
+                return
+
+            context.user_data['dia_recorrente'] = dia
+            context.user_data['estado'] = 'aguardando_valor_fixo_recorrente'
+
+            # Pergunta se tem valor fixo ou variável
+            keyboard = [
+                [InlineKeyboardButton("💰 Valor Fixo", callback_data="rec_tipo_fixo")],
+                [InlineKeyboardButton("📊 Valor Variável", callback_data="rec_tipo_variavel")]
+            ]
+            await update.message.reply_text(
+                f"✅ Vencimento: Dia **{dia}** de cada mês\n\n"
+                f"Esta conta tem valor fixo ou variável?",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            return
+
+        except ValueError:
+            await update.message.reply_text("❌ Digite apenas o número do dia (1-28):")
+            return
+
+    # Estado: Aguardando valor fixo do recorrente
+    if context.user_data.get('estado') == 'aguardando_valor_fixo_digitado':
+        try:
+            valor = float(texto.replace(',', '.'))
+            if valor <= 0:
+                await update.message.reply_text("❌ O valor deve ser maior que zero. Tente novamente:")
+                return
+
+            # Cria o gasto recorrente com valor fixo
+            nome = context.user_data.get('nome_recorrente')
+            dia = context.user_data.get('dia_recorrente')
+
+            gasto = db.criar_gasto_recorrente(
+                user_id=user_id,
+                descricao=nome,
+                dia_vencimento=dia,
+                valor_padrao=valor
+            )
+
+            await update.message.reply_text(
+                f"✅ **Gasto recorrente criado!**\n\n"
+                f"🔄 {gasto.descricao}\n"
+                f"💰 R$ {gasto.valor_padrao:.2f}\n"
+                f"📅 Vencimento: Todo dia {gasto.dia_vencimento}\n\n"
+                f"Use /menu para voltar ao menu principal."
+            )
+
+            # Limpa o estado
+            context.user_data.clear()
+            return
+
+        except ValueError:
+            await update.message.reply_text("❌ Valor inválido. Digite apenas números (ex: 45.90):")
+            return
+
+    # Estado: Aguardando valor para gasto variável
+    if context.user_data.get('estado') == 'aguardando_valor_recorrente':
+        try:
+            valor = float(texto.replace(',', '.'))
+            if valor <= 0:
+                await update.message.reply_text("❌ O valor deve ser maior que zero. Tente novamente:")
+                return
+
+            gasto_id = context.user_data.get('gasto_id')
+
+            # Define o valor
+            db.definir_valor_recorrente_mes(gasto_id, user_id, valor)
+
+            gasto = db.buscar_gasto_recorrente_por_id(gasto_id)
+
+            await update.message.reply_text(
+                f"✅ **Valor definido!**\n\n"
+                f"🔄 {gasto.descricao}\n"
+                f"💰 R$ {valor:.2f}\n\n"
+                f"Use /menu para voltar ao menu principal."
+            )
+
+            # Limpa o estado
+            context.user_data.clear()
+            return
+
+        except ValueError:
+            await update.message.reply_text("❌ Valor inválido. Digite apenas números (ex: 650.50):")
+            return
+
+    # ===== FIM DOS ESTADOS =====
+
     # Verifica se é a palavra "Pago" (marca gastos recorrentes como pagos)
     if texto.lower() in ['pago', 'paga']:
         pendentes = db.obter_pagamentos_pendentes(user_id)
@@ -2396,12 +2542,12 @@ async def menu_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
     # Ações - Caixinhas
     elif data == "action_criar_caixinha":
+        # Inicia o fluxo de criação de caixinha
+        context.user_data['estado'] = 'aguardando_nome_caixinha'
         await query.edit_message_text(
             "➕ **Criar Nova Caixinha**\n\n"
-            "Use o comando:\n"
-            "/criar <nome> <limite>\n\n"
-            "Exemplo:\n"
-            "/criar Mercado 500"
+            "Digite o nome da nova caixinha:\n\n"
+            "Exemplo: Mercado, Alimentação, Transporte..."
         )
 
     elif data == "action_listar_caixinhas":
@@ -2513,14 +2659,12 @@ async def menu_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
     # Ações - Recorrentes
     elif data == "action_criar_recorrente":
+        # Inicia o fluxo de criação de gasto recorrente
+        context.user_data['estado'] = 'aguardando_nome_recorrente'
         await query.edit_message_text(
             "➕ **Criar Gasto Recorrente**\n\n"
-            "**Valor fixo:**\n"
-            "/criar_recorrente <desc> | <valor> | <dia>\n"
-            "Exemplo: /criar_recorrente Netflix | 45.90 | 15\n\n"
-            "**Valor variável:**\n"
-            "/criar_recorrente <desc> | <dia>\n"
-            "Exemplo: /criar_recorrente Condominio | 10"
+            "Digite o nome/descrição da conta:\n\n"
+            "Exemplo: Netflix, Condomínio, Luz, Internet..."
         )
 
     elif data == "action_listar_recorrentes":
@@ -2579,23 +2723,146 @@ async def menu_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
         await query.edit_message_text(msg)
 
     elif data == "action_definir_valor":
+        # Lista gastos variáveis pendentes
+        gastos = db.listar_gastos_recorrentes(user_id)
+        gastos_variaveis = [g for g in gastos if g.valor_variavel]
+
+        if not gastos_variaveis:
+            await query.edit_message_text(
+                "💰 **Definir Valor do Mês**\n\n"
+                "Você não tem gastos recorrentes com valor variável cadastrados."
+            )
+            return
+
+        msg = "💰 **Definir Valor do Mês**\n\n"
+        msg += "Escolha qual gasto você quer definir o valor:\n\n"
+
+        keyboard = []
+        for g in gastos_variaveis:
+            keyboard.append([InlineKeyboardButton(
+                f"{g.descricao}",
+                callback_data=f"defvalor_{g.id}"
+            )])
+
+        keyboard.append([InlineKeyboardButton("🔙 Voltar", callback_data="menu_recorrentes")])
+
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data.startswith("defvalor_"):
+        # Usuário selecionou um gasto para definir valor
+        gasto_id = int(data.split("_")[1])
+        gasto = db.buscar_gasto_recorrente_por_id(gasto_id)
+
+        if not gasto:
+            await query.edit_message_text("❌ Gasto não encontrado.")
+            return
+
+        context.user_data['estado'] = 'aguardando_valor_recorrente'
+        context.user_data['gasto_id'] = gasto_id
+
         await query.edit_message_text(
-            "💰 **Definir Valor do Mês**\n\n"
-            "Use o comando:\n"
-            "/valor_recorrente <nome> <valor>\n\n"
-            "Exemplo:\n"
-            "/valor_recorrente Condominio 650"
+            f"💰 **{gasto.descricao}**\n\n"
+            f"Digite o valor para este mês:\n\n"
+            f"Exemplo: 650.50"
         )
 
     elif data == "action_pagar_recorrente":
+        # Lista gastos pendentes
+        from datetime import datetime
+        mes_atual = datetime.now().month
+        ano_atual = datetime.now().year
+
+        gastos = db.listar_gastos_recorrentes(user_id)
+        gastos_pendentes = []
+
+        for g in gastos:
+            pagamento = db.obter_ou_criar_pagamento_mes(g.id, user_id, mes_atual, ano_atual)
+            if not pagamento.pago:
+                gastos_pendentes.append((g, pagamento))
+
+        if not gastos_pendentes:
+            await query.edit_message_text(
+                "✅ **Marcar Como Pago**\n\n"
+                "Todas as suas contas do mês já foram pagas! 🎉"
+            )
+            return
+
+        msg = "✅ **Marcar Como Pago**\n\n"
+        msg += "Escolha qual conta você pagou:\n\n"
+
+        keyboard = []
+        for g, p in gastos_pendentes:
+            if g.valor_variavel and p.valor:
+                valor_texto = f"R$ {p.valor:.2f}"
+            elif g.valor_variavel:
+                valor_texto = "⚠️ Sem valor"
+            else:
+                valor_texto = f"R$ {g.valor_padrao:.2f}"
+
+            keyboard.append([InlineKeyboardButton(
+                f"{g.descricao} - {valor_texto}",
+                callback_data=f"pagar_{g.id}"
+            )])
+
+        keyboard.append([InlineKeyboardButton("🔙 Voltar", callback_data="menu_recorrentes")])
+
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data.startswith("pagar_"):
+        # Usuário marcou um gasto como pago
+        gasto_id = int(data.split("_")[1])
+        gasto = db.buscar_gasto_recorrente_por_id(gasto_id)
+
+        if not gasto:
+            await query.edit_message_text("❌ Gasto não encontrado.")
+            return
+
+        from datetime import datetime
+        mes_atual = datetime.now().month
+        ano_atual = datetime.now().year
+
+        sucesso = db.marcar_recorrente_como_pago(gasto_id, user_id, mes_atual, ano_atual)
+
+        if sucesso:
+            await query.edit_message_text(
+                f"✅ **Pagamento Registrado!**\n\n"
+                f"**{gasto.descricao}** foi marcado como pago! 🎉"
+            )
+        else:
+            await query.edit_message_text("❌ Erro ao marcar como pago.")
+
+    # Callbacks para criação de recorrente - escolha de tipo
+    elif data == "rec_tipo_fixo":
+        context.user_data['estado'] = 'aguardando_valor_fixo_digitado'
         await query.edit_message_text(
-            "✅ **Marcar Como Pago**\n\n"
-            "Use o comando:\n"
-            "/pagar_recorrente <nome>\n\n"
-            "Exemplo:\n"
-            "/pagar_recorrente Luz\n\n"
-            "Ou responda 'Pago' em qualquer momento"
+            "💰 **Valor Fixo**\n\n"
+            "Digite o valor mensal fixo:\n\n"
+            "Exemplo: 45.90"
         )
+
+    elif data == "rec_tipo_variavel":
+        # Cria o gasto recorrente com valor variável
+        nome = context.user_data.get('nome_recorrente')
+        dia = context.user_data.get('dia_recorrente')
+
+        gasto = db.criar_gasto_recorrente(
+            user_id=user_id,
+            descricao=nome,
+            dia_vencimento=dia,
+            valor_padrao=None  # Valor variável
+        )
+
+        await query.edit_message_text(
+            f"✅ **Gasto recorrente criado!**\n\n"
+            f"🔄 {gasto.descricao}\n"
+            f"📊 Valor VARIÁVEL (defina a cada mês)\n"
+            f"📅 Vencimento: Todo dia {gasto.dia_vencimento}\n\n"
+            f"Use /menu para voltar ao menu principal ou\n"
+            f"/valor_recorrente para definir o valor deste mês."
+        )
+
+        # Limpa o estado
+        context.user_data.clear()
 
     # Ações - Relatórios
     elif data == "action_relatorio_cartao":
@@ -2764,7 +3031,7 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, processar_texto))
 
     # Callback handlers - ordem importa! Específicos antes dos genéricos
-    application.add_handler(CallbackQueryHandler(menu_callback_handler, pattern="^(menu_|action_)"))
+    application.add_handler(CallbackQueryHandler(menu_callback_handler, pattern="^(menu_|action_|defvalor_|pagar_|rec_tipo_)"))
     application.add_handler(CallbackQueryHandler(callback_handler))
 
     # Scheduler V3 - Reset automático baseado no dia de fechamento
