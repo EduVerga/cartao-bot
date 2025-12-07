@@ -2,6 +2,8 @@
 
 Bot do Telegram para controlar gastos do cartão usando sistema de "caixinhas" (categorias com limites).
 
+**Deploy de Teste #2** - Verificando persistência de dados no volume
+
 ## Funcionalidades
 
 - 📸 **Processamento de imagens**: Envia foto de nota fiscal/comprovante
