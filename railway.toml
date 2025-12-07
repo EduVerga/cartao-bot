@@ -7,4 +7,5 @@ restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 10
 
 [[volumes]]
+name = "cartao-bot-data"
 mountPath = "/app/data"
