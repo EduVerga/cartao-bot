@@ -151,27 +151,47 @@ class Database:
 
         # Verifica se banco já existe
         db_exists = os.path.exists(db_path)
+
+        print("\n" + "="*80)
+        print("DATABASE INITIALIZATION DEBUG")
+        print("="*80)
+        print(f"DB_PATH: {db_path}")
+        print(f"DB exists: {db_exists}")
+
         if db_exists:
             db_size = os.path.getsize(db_path)
+            print(f"DB size: {db_size} bytes")
             logger.info(f"📂 Banco existente encontrado: {db_path} ({db_size} bytes)")
         else:
+            print("DB will be created")
             logger.info(f"📂 Criando novo banco: {db_path}")
 
-        self.engine = create_engine(f'sqlite:///{db_path}')
+        self.engine = create_engine(f'sqlite:///{db_path}', echo=False)
 
         # create_all NÃO apaga dados, apenas cria tabelas que não existem
         Base.metadata.create_all(self.engine)
+        print("Tables created/verified")
 
         Session = sessionmaker(bind=self.engine)
         self.session = Session()
 
         # Verifica quantos registros existem após conectar
-        if db_exists:
-            try:
-                num_caixinhas = self.session.query(Caixinha).count()
-                logger.info(f"✅ Banco conectado - {num_caixinhas} caixinha(s) encontrada(s)")
-            except Exception as e:
-                logger.warning(f"⚠️  Erro ao contar caixinhas: {e}")
+        try:
+            num_caixinhas = self.session.query(Caixinha).count()
+            num_transacoes = self.session.query(Transacao).count()
+            num_recorrentes = self.session.query(GastoRecorrente).count()
+
+            print(f"Records found:")
+            print(f"  - Caixinhas: {num_caixinhas}")
+            print(f"  - Transações: {num_transacoes}")
+            print(f"  - Recorrentes: {num_recorrentes}")
+            print("="*80 + "\n")
+
+            logger.info(f"✅ Banco conectado - {num_caixinhas} caixinha(s), {num_transacoes} transação(ões), {num_recorrentes} recorrente(s)")
+        except Exception as e:
+            print(f"ERROR counting records: {e}")
+            print("="*80 + "\n")
+            logger.warning(f"⚠️  Erro ao contar registros: {e}")
 
     def criar_caixinha(self, user_id: int, nome: str, limite: float):
         """Cria uma nova caixinha"""
