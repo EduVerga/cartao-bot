@@ -3649,8 +3649,35 @@ async def menu_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
 def main():
     """Inicia o bot"""
-    # Auto-importa dados se existir backup
+    # VERIFICA CONFIGURAÇÃO DE VOLUME PERSISTENTE
+    logger.info("=" * 60)
+    logger.info("VERIFICANDO CONFIGURAÇÃO DE VOLUME PERSISTENTE")
+    logger.info("=" * 60)
+
     import os.path
+
+    db_path = os.getenv('DB_PATH', 'cartao_bot.db')
+    logger.info(f"DB_PATH configurado: {db_path}")
+
+    if os.path.exists('/app/data'):
+        logger.info("✅ Volume /app/data está montado")
+        try:
+            arquivos = os.listdir('/app/data')
+            logger.info(f"Arquivos no volume: {arquivos if arquivos else '(vazio)'}")
+        except Exception as e:
+            logger.error(f"Erro ao listar volume: {e}")
+    else:
+        logger.warning("❌ Volume /app/data NÃO EXISTE! Dados serão perdidos em cada deploy!")
+
+    if not db_path.startswith('/app/data'):
+        logger.warning(f"⚠️  AVISO: DB_PATH não aponta para volume! Está em: {db_path}")
+        logger.warning("Dados podem ser perdidos a cada deploy!")
+    else:
+        logger.info(f"✅ Banco será salvo no volume: {db_path}")
+
+    logger.info("=" * 60)
+
+    # Auto-importa dados se existir backup
     if os.path.exists('backup_dados.json'):
         logger.info("Backup encontrado! Importando dados...")
         try:
