@@ -2626,6 +2626,83 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def debug_db(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /debug_db - Mostra informações sobre o banco de dados"""
+    user_id = update.effective_user.id
+
+    if not is_authorized(user_id):
+        await update.message.reply_text("🚫 Acesso não autorizado.")
+        return
+
+    try:
+        import os
+
+        # Verifica variável de ambiente
+        db_path_env = os.getenv('DB_PATH', 'NÃO CONFIGURADO')
+
+        # Pega o caminho real do banco
+        db_path_real = db.engine.url.database
+
+        # Verifica se o arquivo existe e tamanho
+        if os.path.exists(db_path_real):
+            tamanho = os.path.getsize(db_path_real)
+            tamanho_kb = tamanho / 1024
+            existe = f"✅ Existe ({tamanho_kb:.2f} KB)"
+        else:
+            existe = "❌ Não existe"
+
+        # Verifica se diretório /app/data existe
+        if os.path.exists('/app/data'):
+            volume_existe = "✅ Sim"
+            # Lista arquivos no volume
+            try:
+                arquivos = os.listdir('/app/data')
+                arquivos_texto = "\n".join(arquivos) if arquivos else "Vazio"
+            except:
+                arquivos_texto = "Erro ao listar"
+        else:
+            volume_existe = "❌ Não"
+            arquivos_texto = "N/A"
+
+        # Conta registros
+        from database import Caixinha, Transacao, GastoRecorrente
+        num_caixinhas = db.session.query(Caixinha).filter_by(user_id=user_id).count()
+        num_transacoes = db.session.query(Transacao).filter_by(user_id=user_id).count()
+        num_recorrentes = db.session.query(GastoRecorrente).filter_by(user_id=user_id).count()
+
+        msg = "🔍 **Debug - Banco de Dados**\n\n"
+        msg += f"📁 **Variável DB_PATH:**\n`{db_path_env}`\n\n"
+        msg += f"📂 **Caminho real do banco:**\n`{db_path_real}`\n\n"
+        msg += f"📄 **Arquivo do banco:** {existe}\n\n"
+        msg += f"💾 **Volume /app/data:** {volume_existe}\n\n"
+        msg += f"📋 **Arquivos no volume:**\n{arquivos_texto}\n\n"
+        msg += f"📊 **Dados do usuário:**\n"
+        msg += f"• Caixinhas: {num_caixinhas}\n"
+        msg += f"• Transações: {num_transacoes}\n"
+        msg += f"• Recorrentes: {num_recorrentes}\n\n"
+        msg += f"⚠️ **Diagnóstico:**\n"
+
+        if db_path_env == 'NÃO CONFIGURADO':
+            msg += "❌ Variável DB_PATH não configurada no Railway!\n"
+            msg += "Configure: DB_PATH=/app/data/cartao.db"
+        elif volume_existe == "❌ Não":
+            msg += "❌ Volume /app/data não foi criado!\n"
+            msg += "Verifique railway.toml"
+        elif db_path_real != '/app/data/cartao.db':
+            msg += f"⚠️ Banco deveria estar em /app/data/cartao.db\n"
+            msg += f"Mas está em {db_path_real}"
+        else:
+            msg += "✅ Tudo configurado corretamente!"
+
+        await update.message.reply_text(msg)
+
+    except Exception as e:
+        logger.error(f"Erro ao gerar debug: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        await update.message.reply_text(f"❌ Erro: {e}")
+
+
 async def backup_dados(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando /backup - Gera e envia arquivo de backup via Telegram"""
     user_id = update.effective_user.id
@@ -3624,6 +3701,7 @@ def main():
     application.add_handler(CommandHandler("remover_recorrente", remover_recorrente))
     application.add_handler(CommandHandler("resetar_tudo", resetar_tudo))
     application.add_handler(CommandHandler("backup", backup_dados))
+    application.add_handler(CommandHandler("debug_db", debug_db))
     application.add_handler(MessageHandler(filters.PHOTO, processar_imagem))
     application.add_handler(MessageHandler(filters.VOICE, processar_audio))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, processar_texto))
