@@ -2709,6 +2709,71 @@ async def debug_db(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Erro: {e}")
 
 
+async def test_volume(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /test_volume - Testa persistência do volume"""
+    user_id = update.effective_user.id
+
+    if not is_authorized(user_id):
+        await update.message.reply_text("🚫 Acesso não autorizado.")
+        return
+
+    try:
+        import json
+        from datetime import datetime
+
+        PERSISTENCE_FILE = '/app/data/persistence_test.json'
+
+        msg = "🧪 **Teste de Persistência do Volume**\n\n"
+
+        # Verifica se arquivo existe
+        if os.path.exists(PERSISTENCE_FILE):
+            with open(PERSISTENCE_FILE, 'r') as f:
+                data = json.load(f)
+
+            msg += "✅ **Arquivo de teste EXISTE!**\n"
+            msg += "Dados persistiram entre deploys!\n\n"
+            msg += f"📅 Último deploy: {data.get('timestamp')}\n"
+            msg += f"🔢 Total de deploys: {data.get('deploy_count')}\n\n"
+        else:
+            msg += "❌ **Arquivo de teste NÃO existe**\n"
+            msg += "Primeiro deploy ou volume foi recriado\n\n"
+
+        # Lista arquivos no volume
+        msg += "📂 **Arquivos em /app/data:**\n"
+        if os.path.exists('/app/data'):
+            files = os.listdir('/app/data')
+            if files:
+                for f in files:
+                    path = os.path.join('/app/data', f)
+                    size = os.path.getsize(path) / 1024  # KB
+                    msg += f"• {f} ({size:.2f} KB)\n"
+            else:
+                msg += "• (vazio)\n"
+        else:
+            msg += "❌ Volume /app/data não existe!\n"
+
+        # Cria/atualiza arquivo de teste
+        try:
+            deploy_info = {'timestamp': datetime.now().isoformat(), 'deploy_count': 1}
+            if os.path.exists(PERSISTENCE_FILE):
+                with open(PERSISTENCE_FILE, 'r') as f:
+                    old_data = json.load(f)
+                deploy_info['deploy_count'] = old_data.get('deploy_count', 0) + 1
+
+            with open(PERSISTENCE_FILE, 'w') as f:
+                json.dump(deploy_info, f)
+
+            msg += f"\n✅ Arquivo de teste atualizado (deploy #{deploy_info['deploy_count']})"
+        except Exception as e:
+            msg += f"\n❌ Erro ao salvar: {e}"
+
+        await update.message.reply_text(msg)
+
+    except Exception as e:
+        logger.error(f"Erro ao testar volume: {e}")
+        await update.message.reply_text(f"❌ Erro: {e}")
+
+
 async def backup_dados(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando /backup - Gera e envia arquivo de backup via Telegram"""
     user_id = update.effective_user.id
@@ -3683,6 +3748,13 @@ def main():
 
     logger.info("=" * 60)
 
+    # TESTE DE PERSISTÊNCIA
+    try:
+        from test_persistence import test_persistence
+        test_persistence()
+    except Exception as e:
+        logger.error(f"Erro ao executar teste de persistência: {e}")
+
     # Auto-importa dados se existir backup
     if os.path.exists('backup_dados.json'):
         logger.info("Backup encontrado! Importando dados...")
@@ -3735,6 +3807,7 @@ def main():
     application.add_handler(CommandHandler("resetar_tudo", resetar_tudo))
     application.add_handler(CommandHandler("backup", backup_dados))
     application.add_handler(CommandHandler("debug_db", debug_db))
+    application.add_handler(CommandHandler("test_volume", test_volume))
     application.add_handler(MessageHandler(filters.PHOTO, processar_imagem))
     application.add_handler(MessageHandler(filters.VOICE, processar_audio))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, processar_texto))
