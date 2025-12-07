@@ -136,12 +136,23 @@ class BotScheduler:
         except Exception as e:
             logger.error(f"Erro ao verificar relatório de fechamento: {e}")
 
-    async def verificar_lembretes_wrapper(self):
-        """Wrapper para chamar verificar_e_enviar_lembretes de forma síncrona"""
+    def verificar_lembretes_sync(self):
+        """Verifica lembretes de forma síncrona (para o scheduler)"""
         try:
-            await self.lembretes.verificar_e_enviar_lembretes(self.telegram_app)
+            import asyncio
+            # Cria um novo event loop se necessário
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            # Executa a verificação assíncrona
+            loop.run_until_complete(self.lembretes.verificar_e_enviar_lembretes(self.telegram_app))
         except Exception as e:
             logger.error(f"Erro ao verificar lembretes: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
 
     def iniciar(self):
         """Inicia o scheduler"""
@@ -165,7 +176,7 @@ class BotScheduler:
 
         # Verifica lembretes de gastos recorrentes diariamente às 09:00
         self.scheduler.add_job(
-            lambda: self.telegram_app._application.create_task(self.verificar_lembretes_wrapper()),
+            self.verificar_lembretes_sync,
             'cron',
             hour=9,
             minute=0,

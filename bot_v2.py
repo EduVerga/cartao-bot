@@ -2474,6 +2474,81 @@ async def testar_relatorio_fechamento(update: Update, context: ContextTypes.DEFA
     await update.message.reply_text(mensagem)
 
 
+async def testar_lembretes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /testar_lembretes para simular verificação de lembretes"""
+    user_id = update.effective_user.id
+
+    if not is_authorized(user_id):
+        await update.message.reply_text("🚫 Acesso não autorizado.")
+        return
+
+    await update.message.reply_text("🔄 Verificando lembretes de gastos recorrentes...")
+
+    try:
+        from lembretes_recorrentes import LembretesRecorrentes
+        from datetime import datetime
+
+        lembretes_sistema = LembretesRecorrentes(db)
+
+        # Busca gastos recorrentes do usuário
+        gastos = db.listar_gastos_recorrentes(user_id, apenas_ativos=True)
+
+        if not gastos:
+            await update.message.reply_text(
+                "📋 Você não tem gastos recorrentes cadastrados.\n\n"
+                "Use /criar_recorrente para adicionar contas fixas."
+            )
+            return
+
+        lembretes_enviados = 0
+        info_gastos = []
+
+        for gasto in gastos:
+            # Calcula dias até vencimento
+            dias_ate = lembretes_sistema.calcular_dias_ate_vencimento(gasto.dia_vencimento)
+
+            # Busca/cria pagamento do mês
+            mes_atual = datetime.now().month
+            ano_atual = datetime.now().year
+            pagamento = db.obter_ou_criar_pagamento_mes(gasto.id, user_id, mes_atual, ano_atual)
+
+            # Info para debug
+            status_pago = "PAGO" if pagamento.pago else "PENDENTE"
+            info_gastos.append(f"• {gasto.descricao}: {dias_ate} dias, {status_pago}")
+
+            # Verifica se deve enviar lembrete
+            if lembretes_sistema.deve_enviar_lembrete(pagamento, dias_ate):
+                mensagem = lembretes_sistema.gerar_mensagem_lembrete(gasto, pagamento, dias_ate)
+                await update.message.reply_text(mensagem)
+
+                # Atualiza último lembrete
+                db.atualizar_ultimo_lembrete(pagamento.id)
+                lembretes_enviados += 1
+
+        # Envia resumo
+        resumo = f"📊 **Resumo da Verificação:**\n\n"
+        resumo += f"✅ Lembretes enviados: {lembretes_enviados}\n"
+        resumo += f"📋 Total de gastos recorrentes: {len(gastos)}\n\n"
+        resumo += "**Detalhes:**\n" + "\n".join(info_gastos)
+
+        if lembretes_enviados == 0:
+            resumo += "\n\n💡 Nenhum lembrete precisa ser enviado agora."
+            resumo += "\n\n**Lembretes são enviados quando:**"
+            resumo += "\n• Faltam entre 1-5 dias para o vencimento"
+            resumo += "\n• No dia do vencimento"
+            resumo += "\n• Conta ainda não foi paga"
+
+        await update.message.reply_text(resumo)
+
+    except Exception as e:
+        logger.error(f"Erro ao testar lembretes: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        await update.message.reply_text(
+            "❌ Erro ao verificar lembretes. Veja os logs para mais detalhes."
+        )
+
+
 async def resetar_tudo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando /resetar_tudo - Apaga TODOS os dados do usuário (com confirmação)"""
     user_id = update.effective_user.id
@@ -3528,6 +3603,7 @@ def main():
     application.add_handler(CommandHandler("testar_reset", testar_reset))
     application.add_handler(CommandHandler("resetar_mes", resetar_mes))
     application.add_handler(CommandHandler("testar_relatorio", testar_relatorio_fechamento))
+    application.add_handler(CommandHandler("testar_lembretes", testar_lembretes))
     application.add_handler(CommandHandler("caixinhas", listar_caixinhas))
     application.add_handler(CommandHandler("editar_limite", editar_limite))
     application.add_handler(CommandHandler("renomear", renomear))
