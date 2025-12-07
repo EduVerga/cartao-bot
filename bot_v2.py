@@ -1,6 +1,12 @@
 """
 Bot do Telegram para controle de gastos do cartão de crédito - VERSÃO 2
 Com confirmação de categorias, memória de estabelecimentos e relatórios automáticos
+
+Recursos:
+- Volume persistente configurado (dados sobrevivem a deploys)
+- Sistema de backup via /backup
+- Lembretes automáticos de gastos recorrentes
+- Menu interativo completo
 """
 import os
 import logging
