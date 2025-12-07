@@ -137,6 +137,9 @@ class Database:
     """Gerenciador do banco de dados"""
 
     def __init__(self, db_path=None):
+        import logging
+        logger = logging.getLogger(__name__)
+
         # Usa variável de ambiente DB_PATH se disponível, senão usa padrão
         if db_path is None:
             db_path = os.getenv('DB_PATH', 'cartao_bot.db')
@@ -146,10 +149,29 @@ class Database:
         if db_dir and not os.path.exists(db_dir):
             os.makedirs(db_dir, exist_ok=True)
 
+        # Verifica se banco já existe
+        db_exists = os.path.exists(db_path)
+        if db_exists:
+            db_size = os.path.getsize(db_path)
+            logger.info(f"📂 Banco existente encontrado: {db_path} ({db_size} bytes)")
+        else:
+            logger.info(f"📂 Criando novo banco: {db_path}")
+
         self.engine = create_engine(f'sqlite:///{db_path}')
+
+        # create_all NÃO apaga dados, apenas cria tabelas que não existem
         Base.metadata.create_all(self.engine)
+
         Session = sessionmaker(bind=self.engine)
         self.session = Session()
+
+        # Verifica quantos registros existem após conectar
+        if db_exists:
+            try:
+                num_caixinhas = self.session.query(Caixinha).count()
+                logger.info(f"✅ Banco conectado - {num_caixinhas} caixinha(s) encontrada(s)")
+            except Exception as e:
+                logger.warning(f"⚠️  Erro ao contar caixinhas: {e}")
 
     def criar_caixinha(self, user_id: int, nome: str, limite: float):
         """Cria uma nova caixinha"""
